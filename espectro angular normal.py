@@ -254,6 +254,10 @@ campo_in = OpticalField(size=GRID_SIZE,
                            pixel_pitch=PIXEL_PITCH,
                            wavelength=WAVELENGTH)
 
+limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+
+print("z <= ", limite, "m")
+
 # Añadir una apertura Sinc 2D. El "size" es el ancho del lóbulo central.
 # Lo hacemos grande para poder visualizarlo bien.
 campo_in.add_aperture("circ", center=(0, 0), size=1e-4)
