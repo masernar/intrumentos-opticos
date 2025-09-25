@@ -1,23 +1,23 @@
 #Transformada de Fresnel
 
-# Importar librerías necesarias
+# Importar librerï¿½as necesarias
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
 
-#Crear campos ópticos de entrada
+#Crear campos ï¿½pticos de entrada
 class OpticalField:
     """
-    Clase para crear y gestionar un campo óptico complejo 2D.
+    Clase para crear y gestionar un campo ï¿½ptico complejo 2D.
     """
     def __init__(self, size, pixel_pitch, wavelength):
         """
-        Inicializa la rejilla del campo óptico.
+        Inicializa la rejilla del campo ï¿½ptico.
 
         Args:
-            size (int): Tamaño de la rejilla en píxeles (ej. 1024).
-            pixel_pitch (float): Tamaño del píxel en metros (ej. 1e-6 para 1 µm).
+            size (int): Tamaï¿½o de la rejilla en pï¿½xeles (ej. 1024).
+            pixel_pitch (float): Tamaï¿½o del pï¿½xel en metros (ej. 1e-6 para 1 ï¿½m).
             wavelength (float): Longitud de onda de la luz en metros (ej. 633e-9 para HeNe).
         """
         self.size = size
@@ -27,21 +27,21 @@ class OpticalField:
         # El campo se inicializa como cero (completamente oscuro)
         self.field = np.zeros((size, size), dtype=np.complex128)
 
-        # Creamos las coordenadas físicas de la rejilla
-        # El centro físico de la rejilla estará en (0, 0)
+        # Creamos las coordenadas fï¿½sicas de la rejilla
+        # El centro fï¿½sico de la rejilla estarï¿½ en (0, 0)
         grid_span = size * pixel_pitch
         coords = np.linspace(-grid_span / 2, grid_span / 2, size)
         self.x_coords, self.y_coords = np.meshgrid(coords, coords)
 
     def add_aperture(self, shape, center=(0, 0), size=None, value=1.0 + 0j):
         """
-        Añade una apertura de una forma específica al campo.
-        El valor se multiplica por la máscara de la forma, no la reemplaza.
+        Aï¿½ade una apertura de una forma especï¿½fica al campo.
+        El valor se multiplica por la mï¿½scara de la forma, no la reemplaza.
         """
         if size is None:
-            raise ValueError("El tamaño (size) debe ser especificado.")
+            raise ValueError("El tamaï¿½o (size) debe ser especificado.")
 
-        # --- MÁSCARAS BINARIAS (0 o 1) ---
+        # --- Mï¿½SCARAS BINARIAS (0 o 1) ---
         if shape.lower() == 'circ':
             radius = size / 2.0
             mask_shape = (self.x_coords - center[0])**2 + (self.y_coords - center[1])**2 < radius**2
@@ -54,7 +54,7 @@ class OpticalField:
                          (np.abs(self.y_coords - center[1]) < height / 2.0)
             self.field += mask_shape.astype(np.complex128) * value
 
-        # --- MÁSCARAS GRADUALES (valores entre 0 y 1) ---
+        # --- Mï¿½SCARAS GRADUALES (valores entre 0 y 1) ---
         elif shape.lower() == 'gauss':
             # Para un Gaussiano, 'size' representa el radio de la viga (beam waist, w0)
             # donde la amplitud cae a 1/e (~37%).
@@ -67,7 +67,7 @@ class OpticalField:
             self.field += mask_shape.astype(np.complex128) * value
 
         elif shape.lower() == 'sinc':
-            # Para un Sinc, 'size' representa el ancho del lóbulo principal.
+            # Para un Sinc, 'size' representa el ancho del lï¿½bulo principal.
             # Usamos np.sinc(x) que es sin(pi*x)/(pi*x)
             width = size
             # Coordenadas relativas normalizadas
@@ -80,7 +80,7 @@ class OpticalField:
         elif shape.lower() == 'ronchi':
             # Para una rejilla Ronchi, 'size' representa el periodo 'd' en metros.
             periodo = size
-            # Generamos una onda cuadrada usando la función seno y sign.
+            # Generamos una onda cuadrada usando la funciï¿½n seno y sign.
             # np.sin(2 * np.pi * self.x_coords / periodo) crea una onda senoidal.
             # np.sign() la convierte en una onda cuadrada (-1 y 1).
             # Sumamos 1 y dividimos por 2 para que sea 0 y 1.
@@ -99,8 +99,8 @@ class OpticalField:
                    extent=[self.x_coords.min(), self.x_coords.max(),
                            self.y_coords.min(), self.y_coords.max()])
         plt.title(title)
-        plt.xlabel("Posición X (m)")
-        plt.ylabel("Posición Y (m)")
+        plt.xlabel("Posiciï¿½n X (m)")
+        plt.ylabel("Posiciï¿½n Y (m)")
         plt.colorbar(label="Intensidad (unidades arbitrarias)")
         plt.show()
 
@@ -114,40 +114,40 @@ class OpticalField:
 
 
         plt.title(title)
-        plt.xlabel("Posición X (m)")
-        plt.ylabel("Posición Y (m)")
+        plt.xlabel("Posiciï¿½n X (m)")
+        plt.ylabel("Posiciï¿½n Y (m)")
         plt.colorbar(label="Fase (radianes)")
         plt.show()
 
     def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
         """
-        Carga una imagen desde un archivo y la añade al campo como una máscara de amplitud.
+        Carga una imagen desde un archivo y la aï¿½ade al campo como una mï¿½scara de amplitud.
 
         Args:
             filepath (str): Ruta al archivo de la imagen (PNG, JPG, etc.).
-            target_width (float): Ancho físico deseado para la imagen en la rejilla (en metros).
-                                  La altura se escalará para mantener la proporción.
-            center (tuple): Coordenadas (x, y) donde se centrará la imagen (en metros).
-            value (complex): Valor complejo que modulará la imagen. Por defecto es 1.0 (amplitud pura).
+            target_width (float): Ancho fï¿½sico deseado para la imagen en la rejilla (en metros).
+                                  La altura se escalarï¿½ para mantener la proporciï¿½n.
+            center (tuple): Coordenadas (x, y) donde se centrarï¿½ la imagen (en metros).
+            value (complex): Valor complejo que modularï¿½ la imagen. Por defecto es 1.0 (amplitud pura).
         """
         try:
             # 1. Cargar la imagen y convertirla a escala de grises (modo 'L')
             img = Image.open(filepath).convert('L')
         except FileNotFoundError:
-            print(f"Error: No se encontró el archivo en la ruta: {filepath}")
+            print(f"Error: No se encontrï¿½ el archivo en la ruta: {filepath}")
             return
 
         # 2. Convertir la imagen a un array de NumPy y normalizarla (0-255 -> 0.0-1.0)
         img_array = np.array(img) / 255.0
 
-        # 3. Calcular las dimensiones de la imagen en píxeles de nuestra rejilla
+        # 3. Calcular las dimensiones de la imagen en pï¿½xeles de nuestra rejilla
         original_width_px, original_height_px = img.size
         aspect_ratio = original_height_px / original_width_px
 
         target_width_px = int(target_width / self.pixel_pitch)
         target_height_px = int(target_width_px * aspect_ratio)
 
-        # 4. Redimensionar la imagen a los píxeles calculados usando un filtro de alta calidad
+        # 4. Redimensionar la imagen a los pï¿½xeles calculados usando un filtro de alta calidad
         # Creamos una nueva imagen de Pillow desde nuestro array normalizado para redimensionar
         img_to_resize = Image.fromarray((img_array * 255).astype(np.uint8))
         resized_img = img_to_resize.resize((target_width_px, target_height_px), Image.Resampling.LANCZOS)
@@ -155,12 +155,12 @@ class OpticalField:
         # Convertimos la imagen redimensionada de vuelta a un array normalizado
         resized_array = np.array(resized_img) / 255.0
 
-        # 5. Calcular la posición para pegar la imagen en la rejilla principal
-        # Convertimos el centro en metros a un offset en píxeles desde el centro de la rejilla
+        # 5. Calcular la posiciï¿½n para pegar la imagen en la rejilla principal
+        # Convertimos el centro en metros a un offset en pï¿½xeles desde el centro de la rejilla
         center_x_px_offset = int(center[0] / self.pixel_pitch)
         center_y_px_offset = int(center[1] / self.pixel_pitch)
 
-        # El centro de la rejilla está en (size/2, size/2)
+        # El centro de la rejilla estï¿½ en (size/2, size/2)
         paste_center_x = self.size // 2 + center_x_px_offset
         paste_center_y = self.size // 2 + center_y_px_offset
 
@@ -174,35 +174,35 @@ class OpticalField:
 
         # Seguridad: Asegurarse de que la imagen no se sale de la rejilla
         if start_x < 0 or end_x > self.size or start_y < 0 or end_y > self.size:
-            print("Advertencia: La imagen es demasiado grande o está descentrada y excede los límites de la rejilla. Será recortada.")
-            # Esta parte se podría hacer más robusta con clipping, pero por ahora lo dejamos así.
+            print("Advertencia: La imagen es demasiado grande o estï¿½ descentrada y excede los lï¿½mites de la rejilla. Serï¿½ recortada.")
+            # Esta parte se podrï¿½a hacer mï¿½s robusta con clipping, pero por ahora lo dejamos asï¿½.
 
-        # 6. Pegar la imagen en el campo óptico
+        # 6. Pegar la imagen en el campo ï¿½ptico
         self.field[start_y:end_y, start_x:end_x] += resized_array.astype(np.complex128) * value
 
 def propagate_fresnel_fft(input_field_obj, z):
     """
-    Propaga un campo óptico usando la Transformada de Fresnel con una sola FFT (Corregido).
+    Propaga un campo ï¿½ptico usando la Transformada de Fresnel con una sola FFT (Corregido).
 
     Args:
         input_field_obj (OpticalField): El objeto OpticalField de entrada.
-        z (float): La distancia de propagación en metros.
+        z (float): La distancia de propagaciï¿½n en metros.
 
     Returns:
         OpticalField: Un nuevo objeto OpticalField con el campo propagado.
     """
-    # 1. Recuperar parámetros
+    # 1. Recuperar parï¿½metros
     U0 = input_field_obj.field
     size = input_field_obj.size
     dx = input_field_obj.pixel_pitch
     wavelength = input_field_obj.wavelength
     k = 2 * np.pi / wavelength
 
-    # 2. Crear las rejillas de coordenadas espaciales (ya están en el objeto)
+    # 2. Crear las rejillas de coordenadas espaciales (ya estï¿½n en el objeto)
     x = input_field_obj.x_coords
     y = input_field_obj.y_coords
 
-    # 3. Multiplicar el campo de entrada por la fase parabólica de entrada
+    # 3. Multiplicar el campo de entrada por la fase parabï¿½lica de entrada
     phase_in = np.exp(1j * k / (2 * z) * (x**2 + y**2))
     U_in_phased = U0 * phase_in
 
@@ -210,23 +210,23 @@ def propagate_fresnel_fft(input_field_obj, z):
     # ANTES de la FFT, movemos el origen del centro a la esquina
     U_in_phased_shifted = fft.ifftshift(U_in_phased)
     A = fft.fft2(U_in_phased_shifted)
-    # DESPUÉS de la FFT, movemos el origen de la esquina de vuelta al centro
+    # DESPUï¿½S de la FFT, movemos el origen de la esquina de vuelta al centro
     A_shifted = fft.fftshift(A)
 
-    # 5. Multiplicar por los factores de propagación y fase de salida
+    # 5. Multiplicar por los factores de propagaciï¿½n y fase de salida
 
-    # Factor de propagación global
+    # Factor de propagaciï¿½n global
     global_factor = np.exp(1j * k * z) / (1j * wavelength * z)
 
-    # Fase parabólica de salida (ya está centrada, igual que x e y)
+    # Fase parabï¿½lica de salida (ya estï¿½ centrada, igual que x e y)
     phase_out = np.exp(1j * k / (2 * z) * (x**2 + y**2))
 
-    # Factor de escala debido a la discretización de la integral de Fourier
-    # Este factor es crucial y depende de cómo se definen las coordenadas
-    # de la FFT. Para la relación que buscamos, es (dx^2).
+    # Factor de escala debido a la discretizaciï¿½n de la integral de Fourier
+    # Este factor es crucial y depende de cï¿½mo se definen las coordenadas
+    # de la FFT. Para la relaciï¿½n que buscamos, es (dx^2).
     scaling_factor = dx**2
 
-    # El campo final se obtiene multiplicando todos los términos
+    # El campo final se obtiene multiplicando todos los tï¿½rminos
     U_out = global_factor * phase_out * scaling_factor * A_shifted
 
     # 6. Crear el objeto de salida
@@ -235,21 +235,26 @@ def propagate_fresnel_fft(input_field_obj, z):
 
     return output_field_obj
 
-# --- FIN DE LA IMPLEMENTACIÓN DE FRESNEL FFT ---
+# --- FIN DE LA IMPLEMENTACIï¿½N DE FRESNEL FFT ---
 
 
 if __name__ == "__main__":
 
-    # --- PARÁMETROS DE LA SIMULACIÓN ---
+    # --- PARï¿½METROS DE LA SIMULACIï¿½N ---
     PIXEL_PITCH = 58e-4/(922)  
     GRID_SIZE = 1024    
     WAVELENGTH = 633E-9
+
+    limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+
+    print("z >= ", limite, "m")
+
     # --- 1. Crear el campo de entrada: La Rejilla Ronchi ---
     campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
     campo_entrada.add_image("/home/mateusi/Desktop/Transm_E01.png",58e-4)
 
     print("Visualizando la imagen a la entrada")
-    campo_entrada.plot_intensity("campo óptico a la entrada")
+    campo_entrada.plot_intensity("campo ï¿½ptico a la entrada")
     i=0
     for i in range(5):
         campo_salida=propagate_fresnel_fft(campo_entrada, 0.1+i*0.06)
