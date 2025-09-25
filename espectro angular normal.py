@@ -1,5 +1,3 @@
-#Espectro angular
-
 # Importar librerías necesarias
 import numpy as np
 import matplotlib.pyplot as plt
@@ -239,16 +237,16 @@ def propagate_asm(input_field, z, padding_factor=2):
     return output_field
 
 
-#______________________________________________________________________________________________________#
+#______________________________________________________________________________________________________
 
 
 #Ejemplo plano óptico de entrada
 
        # --- PARÁMETROS DE LA SIMULACIÓN ---
 GRID_SIZE = 1024
-PIXEL_PITCH = 3.7e-6 # 10 µm para ver mejor los patrones
+PIXEL_PITCH = 1e-6 # 10 µm para ver mejor los patrones
 WAVELENGTH = 633e-9 # Láser HeNe
-distance = 1e-2 #0 1 cm
+
 # --- Crear el campo óptico inicial ---
 campo_in = OpticalField(size=GRID_SIZE,
                            pixel_pitch=PIXEL_PITCH,
@@ -256,13 +254,13 @@ campo_in = OpticalField(size=GRID_SIZE,
 
 # Añadir una apertura Sinc 2D. El "size" es el ancho del lóbulo central.
 # Lo hacemos grande para poder visualizarlo bien.
-campo_in.add_aperture("circ", center=(0, 0), size=1e-4)
+campo_in.add_aperture("circ", center=(0, 0), size=100e-6)
 
 
 # Visualizar el resultado
 campo_in.plot_intensity(title="Intensidad de la apertura")
 
-A_prop=propagate_asm(campo_in,distance,2)
+A_prop=propagate_asm(campo_in,1e-2,2)
 
 A_prop.plot_intensity(title="intesidad campo proapagado")
 A_prop.plot_phase(title="Fase campo propagado")
