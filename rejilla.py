@@ -249,6 +249,10 @@ if __name__ == "__main__":
     PIXEL_PITCH = 2e-6   # 2 µm por píxel (50 píxeles por periodo, ¡excelente!)
     GRID_SIZE = 2048     # Una rejilla grande para ver varios periodos
 
+    limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+
+    print("z >= ", limite, "m")
+
     # --- CÁLCULO ANALÍTICO DE LA DISTANCIA DE TALBOT ---
     z_talbot = 2 * PERIODO_REJILLA**2 / WAVELENGTH
     print(f"Predicción Analítica:")
