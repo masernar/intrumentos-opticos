@@ -330,5 +330,6 @@ campo_in.plot_intensity(title="Intensidad de la apertura")
 A_prop=propagate_asm(campo_in,1e-2,2)
 
 A_prop.plot_intensity(title="intesidad campo proapagado")
-A_prop.plot_phase(title="Fase campo propagado")
 
+A_back=propagate_asm_back(A_prop,z=-1e-2,padding_factor=2)
+A_back.plot_intensity(title="intesidad campo de pa atras")
