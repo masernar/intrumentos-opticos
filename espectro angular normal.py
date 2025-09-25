@@ -242,20 +242,19 @@ def propagate_asm(input_field, z, padding_factor=2):
 
 #Ejemplo plano óptico de entrada
 
-       # --- PARÁMETROS DE LA SIMULACIÓN ---
-GRID_SIZE = 1024
-PIXEL_PITCH = 1e-6 # 10 µm para ver mejor los patrones
-WAVELENGTH = 633e-9 # Láser HeNe
+
+# --- PARÁMETROS DE LA SIMULACIÓN ---
+PIXEL_PITCH = 58e-4/(922)  
+GRID_SIZE = 1024    
+WAVELENGTH = 633E-9
+
+limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+
+print("z <= ", limite*100, "cm")
 
 # --- Crear el campo óptico inicial ---
-campo_in = OpticalField(size=GRID_SIZE,
-                           pixel_pitch=PIXEL_PITCH,
-                           wavelength=WAVELENGTH)
-
-# Añadir una apertura Sinc 2D. El "size" es el ancho del lóbulo central.
-# Lo hacemos grande para poder visualizarlo bien.
-campo_in.add_aperture("circ", center=(0, 0), size=100e-6)
-
+campo_in = OpticalField(size=GRID_SIZE,pixel_pitch=PIXEL_PITCH,wavelength=WAVELENGTH)
+campo_in.add_image("/home/mateusi/Desktop/Transm_E01.png",58e-4)
 
 # Visualizar el resultado
 campo_in.plot_intensity(title="Intensidad de la apertura")
