@@ -8,7 +8,7 @@ import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficiente
 from scipy.integrate import quad
 from scipy.special import j0 # Función de Bessel de orden cero
 import time
-
+from scipy.stats import pearsonr
 #Crear campos �pticos de entrada
 class OpticalField:
     """
@@ -297,81 +297,134 @@ def calcular_difraccion_analitica_circular(L_out, N_out, radius, lam, z):
     
     return intensity
 
+def calcular_correlacion_pearson(imagen1, imagen2):
+    """
+    Calcula el coeficiente de correlación de Pearson entre dos imágenes 2D.
+
+    Args:
+        imagen1 (np.ndarray): La primera imagen (matriz 2D).
+        imagen2 (np.ndarray): La segunda imagen (matriz 2D).
+
+    Returns:
+        float: El coeficiente de correlación de Pearson.
+    """
+    # 1. Asegurarse de que ambas imágenes tienen la misma forma
+    if imagen1.shape != imagen2.shape:
+        raise ValueError("Las imágenes deben tener las mismas dimensiones para la correlación.")
+
+    # 2. Aplanar las matrices 2D para convertirlas en vectores 1D
+    imagen1_plana = imagen1.flatten()
+    imagen2_plana = imagen2.flatten()
+
+    # 3. Calcular el coeficiente de correlación de Pearson
+    # pearsonr devuelve el coeficiente y el p-valor, solo necesitamos el primero [0].
+    coeficiente, _ = pearsonr(imagen1_plana, imagen2_plana)
+
+    return coeficiente
+
 # --- FIN DE LA IMPLEMENTACI�N DE FRESNEL FFT ---
 
 
 if __name__ == "__main__":
 
-    # --- PAR�METROS DE LA SIMULACI�N ---
-    PIXEL_PITCH = 63.3271E-6 
-    GRID_SIZE = 512  
-    WAVELENGTH = 633E-9
-
-    limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
-
-    print("z >= ", limite, "m")
-
-    # --- 1. Crear el campo de entrada: transmitancia circular ---
-    campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    campo_entrada.add_aperture("circ",center=(0,0),size=0.5e-3)
-    campo_entrada.plot_intensity("campo Óptico a la entrada")
-    campo_salida=propagate_fresnel_fft(campo_entrada, 0.5)
-    
-    # ...justo antes de llamar a campo_salida.plot_intensity()
-    # O si lo graficas manualmente:
-    L_out_fft = campo_salida.size * campo_salida.pixel_pitch
-    print("--- Diagnóstico FFT ---")
-    print(f"Píxeles: {campo_salida.size}x{campo_salida.size}")
-    print(f"Tamaño Físico (L_out): {L_out_fft * 1e3:.2f} mm") # Multiplicamos por 1e3 para ver en mm
-    
-    plt.figure(figsize=(8, 7))
-    # Asegúrate de que extent use el tamaño físico correcto
-    plt.imshow(np.abs(campo_salida.field)**2, cmap='gray', 
-               extent=[-L_out_fft/2 * 1e3, L_out_fft/2 * 1e3, -L_out_fft/2 * 1e3, L_out_fft/2 * 1e3])
-    plt.title("Patrón de Difracción de Fresnel (Transformada de Fresnel)")
-    plt.xlabel("x [mm]")
-    plt.ylabel("y [mm]")
-    plt.colorbar(label="Intensidad")
-    plt.show()
-
-    campo_salida.plot_intensity("Patrón de Difracción de Fresnel (Tranformada de Fresnel)")
+ # =========================================================================
+# PASO 1: PARÁMETROS DE ENTRADA PARA LA SIMULACIÓN FFT
 # =========================================================================
-    # PARÁMETROS: AJUSTA ESTOS VALORES A LOS DE TU SIMULACIÓN
+# --- Parámetros Fundamentales ---
+    WAVELENGTH = 633E-9      # Longitud de onda (633 nm)
+    DISTANCE = 0.5           # Distancia de propagación z (0.5 m)
+    APERTURE_RADIUS = 0.5e-3 # Radio de la apertura (0.5 mm)
+    
+    # --- Parámetros de la Malla de ENTRADA (Elegidos para ser VÁLIDOS) ---
+    GRID_SIZE = 1024         # Número de píxeles (aumentamos para más detalle)
+    PIXEL_PITCH_IN = 25E-6   # Tamaño del píxel de ENTRADA (25 µm)
+    
+    # --- Verificación de la Condición de Nyquist (Opcional pero recomendado) ---
+    L_in = GRID_SIZE * PIXEL_PITCH_IN
+    nyquist_check_value = GRID_SIZE * WAVELENGTH * DISTANCE
+    if L_in**2 <= nyquist_check_value:
+        print(f"✅ Condición de Nyquist CUMPLIDA: {L_in**2:.4e} <= {nyquist_check_value:.4e}")
+    else:
+        print(f"❌ ADVERTENCIA: Condición de Nyquist NO CUMPLIDA: {L_in**2:.4e} > {nyquist_check_value:.4e}")
+    
+    # --- Crear y Graficar el Campo de Entrada ---
+    campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH_IN, WAVELENGTH)
+    campo_entrada.add_aperture("circ", size=APERTURE_RADIUS * 2) # La función espera diámetro
+    campo_entrada.plot_intensity("Campo de Entrada Válido")
+    
+    # --- Ejecutar la Propagación FFT ---
+    campo_salida = propagate_fresnel_fft(campo_entrada, DISTANCE)
+    
+    campo_salida.plot_intensity("Resultado transferencia de Fresnel")
+    # =========================================================================
+    # PASO 2: CONFIGURAR LA SIMULACIÓN ANALÍTICA CON LA SALIDA DE LA FFT
     # =========================================================================
     
-    # Parámetros del plano de SALIDA (deben coincidir con tu método)
-    N_out = 512      # Número de píxeles en el resultado (ej. 512x512)
-    L_out = 5e-3     # Dimensión física del plano de salida [metros] (ej. 5 mm)
-
-    # Parámetros de la apertura y propagación
-    aperture_radius = 0.5e-3 # Radio de la apertura [metros] (ej. 0.5 mm)
-    wavelength = 633e-9    # Longitud de onda [metros] (ej. láser He-Ne, rojo)
-    distance = 0.5         # Distancia de propagación [metros] (ej. 50 cm)
+    # --- Extraer los parámetros de la malla de SALIDA de la simulación FFT ---
+    N_OUT_TARGET = campo_salida.size
+    PIXEL_PITCH_OUT_TARGET = campo_salida.pixel_pitch
+    L_OUT_TARGET = N_OUT_TARGET * PIXEL_PITCH_OUT_TARGET
     
-    # =========================================================================
-
-    # Llama a la función para obtener la imagen de referencia
+    print("\n--- Parámetros para la Simulación Analítica (dictados por la FFT) ---")
+    print(f"Píxeles de Salida (N_out): {N_OUT_TARGET}")
+    print(f"Tamaño Físico de Salida (L_out): {L_OUT_TARGET * 1e3:.2f} mm")
+    print(f"Pixel Pitch de Salida (dx_out): {PIXEL_PITCH_OUT_TARGET * 1e6:.2f} µm")
+    
+    # --- Ejecutar la Simulación Analítica ---
     analytical_intensity = calcular_difraccion_analitica_circular(
-        L_out=L_out,
-        N_out=N_out,
-        radius=aperture_radius,
-        lam=wavelength,
-        z=distance
+        L_out=L_OUT_TARGET,
+        N_out=N_OUT_TARGET,
+        radius=APERTURE_RADIUS,
+        lam=WAVELENGTH,
+        z=DISTANCE
     )
-
-    # Visualiza el resultado
+    
+    # --- Graficar ambos resultados para comparar ---
+    # (Usa el código de graficación que ya tienes, asegurando que ambos usen L_OUT_TARGET
+    # para el parámetro 'extent' en imshow)
+    
+    
     plt.figure(figsize=(8, 7))
-    plt.imshow(analytical_intensity, cmap='gray', extent=[-L_out/2*1e3, L_out/2*1e3, -L_out/2*1e3, L_out/2*1e3])
-        # ...justo antes de llamar a plt.imshow() para el resultado analítico
-    print("\n--- Diagnóstico Analítico ---")
-    print(f"Píxeles: {N_out}x{N_out}")
-    print(f"Tamaño Físico (L_out): {L_out * 1e3:.2f} mm")
-    plt.figure(figsize=(8, 7))
-    # El extent aquí ya lo tenías bien definido
-    plt.imshow(analytical_intensity, cmap='gray', 
-               extent=[-L_out/2*1e3, L_out/2*1e3, -L_out/2*1e3, L_out/2*1e3])
-    plt.title("Patrón de Difracción de Fresnel (Solución Analítica)")
+    plt.imshow(analytical_intensity, cmap='gray', extent=[-L_OUT_TARGET/2*1e3, L_OUT_TARGET/2*1e3, -L_OUT_TARGET/2*1e3, L_OUT_TARGET/2*1e3])
+    plt.title("Resultado Analítico (Sincronizado)")
     plt.xlabel("x [mm]")
     plt.ylabel("y [mm]")
     plt.colorbar(label="Intensidad Normalizada")
+    plt.show()
+    
+    # ... (Después de haber calculado 'campo_salida' y 'analytical_intensity')
+    
+    # --- 1. Obtener la intensidad del campo FFT ---
+    intensity_fft = np.abs(campo_salida.field)**2
+    
+    # --- 2. Normalizar ambas intensidades (buena práctica para visualización) ---
+    if intensity_fft.max() > 0:
+        intensity_fft_norm = intensity_fft / intensity_fft.max()
+    if analytical_intensity.max() > 0:
+        analytical_intensity_norm = analytical_intensity / analytical_intensity.max()
+    
+    # --- 3. Calcular la correlación entre los dos patrones de intensidad ---
+    try:
+        coeficiente = calcular_correlacion_pearson(intensity_fft_norm, analytical_intensity_norm)
+        print("\n" + "="*50)
+        print(f"📊 El coeficiente de correlación de Pearson es: {coeficiente:.6f}")
+        print("="*50)
+    except ValueError as e:
+        print(f"Error al calcular la correlación: {e}")
+    
+    
+    # --- 4. (Opcional pero recomendado) Visualizar un perfil central ---
+    # Esto te permite ver las diferencias de forma muy clara
+    centro = intensity_fft_norm.shape[0] // 2
+    perfil_fft = intensity_fft_norm[centro, :]
+    perfil_analitico = analytical_intensity_norm[centro, :]
+    
+    plt.figure(figsize=(12, 6))
+    plt.title("Comparación de Perfil Central (Fila Central de la Imagen)")
+    plt.plot(perfil_fft, label='Perfil FFT', linewidth=2)
+    plt.plot(perfil_analitico, label='Perfil Analítico', linestyle='--', linewidth=2)
+    plt.xlabel("Posición del Píxel")
+    plt.ylabel("Intensidad Normalizada")
+    plt.legend()
+    plt.grid(True)
     plt.show()
