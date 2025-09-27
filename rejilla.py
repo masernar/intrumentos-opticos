@@ -182,57 +182,56 @@ class OpticalField:
 
 def propagate_fresnel_fft(input_field_obj, z):
     """
-    Propaga un campo óptico usando la Transformada de Fresnel con una sola FFT (Corregido).
+    Propaga un campo óptico usando la Transformada de Fresnel.
 
     Args:
         input_field_obj (OpticalField): El objeto OpticalField de entrada.
         z (float): La distancia de propagación en metros.
 
     Returns:
-        OpticalField: Un nuevo objeto OpticalField con el campo propagado.
+        OpticalField: Un nuevo objeto OpticalField con el campo propagado y la escala correcta.
     """
-    # 1. Recuperar parámetros
+    # 1. Recuperar parámetros de entrada
     U0 = input_field_obj.field
     size = input_field_obj.size
-    dx = input_field_obj.pixel_pitch
+    dx_in = input_field_obj.pixel_pitch
+    L_in = size * dx_in
     wavelength = input_field_obj.wavelength
     k = 2 * np.pi / wavelength
 
-    # 2. Crear las rejillas de coordenadas espaciales (ya están en el objeto)
-    x = input_field_obj.x_coords
-    y = input_field_obj.y_coords
+    # 2. Coordenadas espaciales de entrada
+    x_in = input_field_obj.x_coords
+    y_in = input_field_obj.y_coords
 
-    # 3. Multiplicar el campo de entrada por la fase parabólica de entrada
-    phase_in = np.exp(1j * k / (2 * z) * (x**2 + y**2))
+    # 3. Multiplicar por fase de entrada
+    phase_in = np.exp(1j * k / (2 * z) * (x_in**2 + y_in**2))
     U_in_phased = U0 * phase_in
 
-    # 4. Calcular la FFT
-    # ANTES de la FFT, movemos el origen del centro a la esquina
-    U_in_phased_shifted = fft.ifftshift(U_in_phased)
-    A = fft.fft2(U_in_phased_shifted)
-    # DESPUÉS de la FFT, movemos el origen de la esquina de vuelta al centro
-    A_shifted = fft.fftshift(A)
+    # 4. Calcular la FFT centrada
+    A_shifted = fft.fftshift(fft.fft2(fft.ifftshift(U_in_phased)))
 
-    # 5. Multiplicar por los factores de propagación y fase de salida
+    # 5. Calcular los parámetros del plano de salida PRIMERO
+    dx_out = (wavelength * z) / L_in
+    
+    # 6. Crear el objeto de salida para tener acceso a sus coordenadas
+    output_field_obj = OpticalField(size, dx_out, wavelength)
+    x_out = output_field_obj.x_coords
+    y_out = output_field_obj.y_coords
 
-    # Factor de propagación global
+    # 7. Calcular los factores de propagación usando las coordenadas CORRECTAS
     global_factor = np.exp(1j * k * z) / (1j * wavelength * z)
-
-    # Fase parabólica de salida (ya está centrada, igual que x e y)
-    phase_out = np.exp(1j * k / (2 * z) * (x**2 + y**2))
-
-    # Factor de escala debido a la discretización de la integral de Fourier
-    # Este factor es crucial y depende de cómo se definen las coordenadas
-    # de la FFT. Para la relación que buscamos, es (dx^2).
-    scaling_factor = dx**2
-
-    # El campo final se obtiene multiplicando todos los términos
+    
+    # La fase de salida AHORA usa las coordenadas del plano de salida (x_out, y_out)
+    phase_out = np.exp(1j * k / (2 * z) * (x_out**2 + y_out**2))
+    
+    scaling_factor = dx_in**2
+    
+    # 8. Calcular el campo final
     U_out = global_factor * phase_out * scaling_factor * A_shifted
-
-    # 6. Crear el objeto de salida
-    output_field_obj = OpticalField(size, dx, wavelength)
+    
+    # Asignar el campo calculado al objeto de salida
     output_field_obj.field = U_out
-
+    
     return output_field_obj
 
 # --- FIN DE LA IMPLEMENTACIÓN DE FRESNEL FFT ---
