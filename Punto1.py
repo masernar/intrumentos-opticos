@@ -102,8 +102,8 @@ class OpticalField:
                    extent=[self.x_coords.min(), self.x_coords.max(),
                            self.y_coords.min(), self.y_coords.max()])
         plt.title(title)
-        plt.xlabel("Posici�n X (m)")
-        plt.ylabel("Posici�n Y (m)")
+        plt.xlabel("Posición X (m)")
+        plt.ylabel("Posición Y (m)")
         plt.colorbar(label="Intensidad (unidades arbitrarias)")
         plt.show()
 
@@ -117,27 +117,27 @@ class OpticalField:
 
 
         plt.title(title)
-        plt.xlabel("Posici�n X (m)")
-        plt.ylabel("Posici�n Y (m)")
+        plt.xlabel("Posición X (m)")
+        plt.ylabel("Posición Y (m)")
         plt.colorbar(label="Fase (radianes)")
         plt.show()
 
     def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
         """
-        Carga una imagen desde un archivo y la a�ade al campo como una m�scara de amplitud.
+        Carga una imagen desde un archivo y la añade al campo como una m�scara de amplitud.
 
         Args:
             filepath (str): Ruta al archivo de la imagen (PNG, JPG, etc.).
-            target_width (float): Ancho f�sico deseado para la imagen en la rejilla (en metros).
-                                  La altura se escalar� para mantener la proporci�n.
-            center (tuple): Coordenadas (x, y) donde se centrar� la imagen (en metros).
-            value (complex): Valor complejo que modular� la imagen. Por defecto es 1.0 (amplitud pura).
+            target_width (float): Ancho físico deseado para la imagen en la rejilla (en metros).
+                                  La altura se escalará para mantener la proporción.
+            center (tuple): Coordenadas (x, y) donde se centrará la imagen (en metros).
+            value (complex): Valor complejo que modulará la imagen. Por defecto es 1.0 (amplitud pura).
         """
         try:
             # 1. Cargar la imagen y convertirla a escala de grises (modo 'L')
             img = Image.open(filepath).convert('L')
         except FileNotFoundError:
-            print(f"Error: No se encontr� el archivo en la ruta: {filepath}")
+            print(f"Error: No se encontró el archivo en la ruta: {filepath}")
             return
 
         # 2. Convertir la imagen a un array de NumPy y normalizarla (0-255 -> 0.0-1.0)
@@ -177,65 +177,63 @@ class OpticalField:
 
         # Seguridad: Asegurarse de que la imagen no se sale de la rejilla
         if start_x < 0 or end_x > self.size or start_y < 0 or end_y > self.size:
-            print("Advertencia: La imagen es demasiado grande o est� descentrada y excede los l�mites de la rejilla. Ser� recortada.")
-            # Esta parte se podr�a hacer m�s robusta con clipping, pero por ahora lo dejamos as�.
+            print("Advertencia: La imagen es demasiado grande o está descentrada y excede los límites de la rejilla. Será recortada.")
 
         # 6. Pegar la imagen en el campo �ptico
         self.field[start_y:end_y, start_x:end_x] += resized_array.astype(np.complex128) * value
 
 def propagate_fresnel_fft(input_field_obj, z):
     """
-    Propaga un campo �ptico usando la Transformada de Fresnel con una sola FFT (Corregido).
+    Propaga un campo óptico usando la Transformada de Fresnel.
 
     Args:
         input_field_obj (OpticalField): El objeto OpticalField de entrada.
-        z (float): La distancia de propagaci�n en metros.
+        z (float): La distancia de propagación en metros.
 
     Returns:
-        OpticalField: Un nuevo objeto OpticalField con el campo propagado.
+        OpticalField: Un nuevo objeto OpticalField con el campo propagado y la escala correcta.
     """
-    # 1. Recuperar par�metros
+    # 1. Recuperar parámetros de entrada
     U0 = input_field_obj.field
     size = input_field_obj.size
-    dx = input_field_obj.pixel_pitch
+    dx_in = input_field_obj.pixel_pitch
+    L_in = size * dx_in
     wavelength = input_field_obj.wavelength
     k = 2 * np.pi / wavelength
 
-    # 2. Crear las rejillas de coordenadas espaciales (ya est�n en el objeto)
-    x = input_field_obj.x_coords
-    y = input_field_obj.y_coords
+    # 2. Coordenadas espaciales de entrada
+    x_in = input_field_obj.x_coords
+    y_in = input_field_obj.y_coords
 
-    # 3. Multiplicar el campo de entrada por la fase parab�lica de entrada
-    phase_in = np.exp(1j * k / (2 * z) * (x**2 + y**2))
+    # 3. Multiplicar por fase de entrada
+    phase_in = np.exp(1j * k / (2 * z) * (x_in**2 + y_in**2))
     U_in_phased = U0 * phase_in
 
-    # 4. Calcular la FFT
-    # ANTES de la FFT, movemos el origen del centro a la esquina
-    U_in_phased_shifted = fft.ifftshift(U_in_phased)
-    A = fft.fft2(U_in_phased_shifted)
-    # DESPU�S de la FFT, movemos el origen de la esquina de vuelta al centro
-    A_shifted = fft.fftshift(A)
+    # 4. Calcular la FFT centrada
+    A_shifted = fft.fftshift(fft.fft2(fft.ifftshift(U_in_phased)))
 
-    # 5. Multiplicar por los factores de propagaci�n y fase de salida
+    # 5. Calcular los parámetros del plano de salida PRIMERO
+    dx_out = (wavelength * z) / L_in
+    
+    # 6. Crear el objeto de salida para tener acceso a sus coordenadas
+    output_field_obj = OpticalField(size, dx_out, wavelength)
+    x_out = output_field_obj.x_coords
+    y_out = output_field_obj.y_coords
 
-    # Factor de propagaci�n global
+    # 7. Calcular los factores de propagación usando las coordenadas CORRECTAS
     global_factor = np.exp(1j * k * z) / (1j * wavelength * z)
-
-    # Fase parab�lica de salida (ya est� centrada, igual que x e y)
-    phase_out = np.exp(1j * k / (2 * z) * (x**2 + y**2))
-
-    # Factor de escala debido a la discretizaci�n de la integral de Fourier
-    # Este factor es crucial y depende de c�mo se definen las coordenadas
-    # de la FFT. Para la relaci�n que buscamos, es (dx^2).
-    scaling_factor = dx**2
-
-    # El campo final se obtiene multiplicando todos los t�rminos
+    
+    # La fase de salida AHORA usa las coordenadas del plano de salida (x_out, y_out)
+    phase_out = np.exp(1j * k / (2 * z) * (x_out**2 + y_out**2))
+    
+    scaling_factor = dx_in**2
+    
+    # 8. Calcular el campo final
     U_out = global_factor * phase_out * scaling_factor * A_shifted
-
-    # 6. Crear el objeto de salida
-    output_field_obj = OpticalField(size, dx, wavelength)
+    
+    # Asignar el campo calculado al objeto de salida
     output_field_obj.field = U_out
-
+    
     return output_field_obj
 
 
@@ -276,9 +274,6 @@ def calcular_difraccion_analitica_circular(L_out, N_out, radius, lam, z):
 
     # Realiza la integración para cada punto radial único
     for i, r_obs in enumerate(r_unique):
-        # =========================================================================
-        # INICIO DE LA CORRECCIÓN
-        # =========================================================================
         # Integramos la parte real y la parte imaginaria por separado.
         # Crucial: extraemos el PRIMER elemento ([0]) del resultado de quad.
         
@@ -286,9 +281,6 @@ def calcular_difraccion_analitica_circular(L_out, N_out, radius, lam, z):
         imag_part = quad(lambda r_prime: integrand(r_prime, r_obs).imag, 0, radius)[0]
         
         U_radial[i] = real_part + 1j * imag_part
-        # =========================================================================
-        # FIN DE LA CORRECCIÓN
-        # =========================================================================
 
     # ---- 3. Mapeo del resultado radial a la imagen 2D ----
     r_to_U_map = dict(zip(r_unique, U_radial))
@@ -311,19 +303,37 @@ def calcular_difraccion_analitica_circular(L_out, N_out, radius, lam, z):
 if __name__ == "__main__":
 
     # --- PAR�METROS DE LA SIMULACI�N ---
-    PIXEL_PITCH = 63.3E-6 
-    GRID_SIZE = 512   
+    PIXEL_PITCH = 63.3271E-6 
+    GRID_SIZE = 512  
     WAVELENGTH = 633E-9
 
     limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
 
     print("z >= ", limite, "m")
 
-    # --- 1. Crear el campo de entrada: La Rejilla Ronchi ---
+    # --- 1. Crear el campo de entrada: transmitancia circular ---
     campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
     campo_entrada.add_aperture("circ",center=(0,0),size=0.5e-3)
-    campo_entrada.plot_intensity("campo �ptico a la entrada")
+    campo_entrada.plot_intensity("campo Óptico a la entrada")
     campo_salida=propagate_fresnel_fft(campo_entrada, 0.5)
+    
+    # ...justo antes de llamar a campo_salida.plot_intensity()
+    # O si lo graficas manualmente:
+    L_out_fft = campo_salida.size * campo_salida.pixel_pitch
+    print("--- Diagnóstico FFT ---")
+    print(f"Píxeles: {campo_salida.size}x{campo_salida.size}")
+    print(f"Tamaño Físico (L_out): {L_out_fft * 1e3:.2f} mm") # Multiplicamos por 1e3 para ver en mm
+    
+    plt.figure(figsize=(8, 7))
+    # Asegúrate de que extent use el tamaño físico correcto
+    plt.imshow(np.abs(campo_salida.field)**2, cmap='gray', 
+               extent=[-L_out_fft/2 * 1e3, L_out_fft/2 * 1e3, -L_out_fft/2 * 1e3, L_out_fft/2 * 1e3])
+    plt.title("Patrón de Difracción de Fresnel (Transformada de Fresnel)")
+    plt.xlabel("x [mm]")
+    plt.ylabel("y [mm]")
+    plt.colorbar(label="Intensidad")
+    plt.show()
+
     campo_salida.plot_intensity("Patrón de Difracción de Fresnel (Tranformada de Fresnel)")
 # =========================================================================
     # PARÁMETROS: AJUSTA ESTOS VALORES A LOS DE TU SIMULACIÓN
@@ -352,6 +362,14 @@ if __name__ == "__main__":
     # Visualiza el resultado
     plt.figure(figsize=(8, 7))
     plt.imshow(analytical_intensity, cmap='gray', extent=[-L_out/2*1e3, L_out/2*1e3, -L_out/2*1e3, L_out/2*1e3])
+        # ...justo antes de llamar a plt.imshow() para el resultado analítico
+    print("\n--- Diagnóstico Analítico ---")
+    print(f"Píxeles: {N_out}x{N_out}")
+    print(f"Tamaño Físico (L_out): {L_out * 1e3:.2f} mm")
+    plt.figure(figsize=(8, 7))
+    # El extent aquí ya lo tenías bien definido
+    plt.imshow(analytical_intensity, cmap='gray', 
+               extent=[-L_out/2*1e3, L_out/2*1e3, -L_out/2*1e3, L_out/2*1e3])
     plt.title("Patrón de Difracción de Fresnel (Solución Analítica)")
     plt.xlabel("x [mm]")
     plt.ylabel("y [mm]")
