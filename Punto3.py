@@ -234,30 +234,40 @@ def propagate_fresnel_fft(input_field_obj, z):
     
     return output_field_obj
 
-# --- FIN DE LA IMPLEMENTACI�N DE FRESNEL FFT ---
+# --- FIN DE LA IMPLEMENTACION DE FRESNEL FFT ---
 
 
 if __name__ == "__main__":
 
-    # --- PAR�METROS DE LA SIMULACI�N ---
-    PIXEL_PITCH = 58e-4/(922)  
-    GRID_SIZE = 1024    
+    # --- PARAMETROS DE LA SIMULACION ---
+
+    PIXEL_PITCH_1 = 5.3e-6 
+    GRID_SIZE = 1080
     WAVELENGTH = 633E-9
 
-    limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
-
-    print("z >= ", limite, "m")
+   
 
     # --- 1. Crear el campo de entrada: La Rejilla Ronchi ---
-    campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    campo_entrada.add_image("/home/mateusi/Desktop/Transm_E01.png",58e-4)
+    campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH_1, WAVELENGTH)
+    campo_entrada.add_image("C:/Users/SEBASTIAN/OneDrive - Universidad Nacional de Colombia/Escritorio/Nueva carpeta/Entrega_1/trans/Transm_E01.png",58e-4)
 
     print("Visualizando la imagen a la entrada")
-    campo_entrada.plot_intensity("campo �ptico a la entrada")
-    i=0
-    for i in range(5):
-        campo_salida=propagate_fresnel_fft(campo_entrada, 0.1+i*0.06)
-        campo_salida.plot_intensity("Campo propagado una distancia z={} cm".format(10+i*6))
+    campo_entrada.plot_intensity("campo optico a la entrada")
         
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.1151))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.1151))
 
-  
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.1446))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.1446))
+
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.1946))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.1946))
+
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2446))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2446))
+
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2946))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2946))
+
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.3446))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.3446))
