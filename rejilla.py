@@ -4,7 +4,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2
+import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 
 
 #Crear campos ópticos de entrada
 class OpticalField:
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     # --- PARÁMETROS DE LA SIMULACIÓN ---
     # Necesitamos píxeles pequeños para resolver bien el periodo de 100 µm.
     # Usemos al menos 10 píxeles por periodo.
-    PIXEL_PITCH = 5.3e-6   # 5.3 µm por píxel
+    PIXEL_PITCH = 2e-6   # 2 µm por píxel
     GRID_SIZE = 2048       # Una rejilla grande para ver varios periodos
 
     limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
