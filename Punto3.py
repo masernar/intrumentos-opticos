@@ -1,24 +1,24 @@
 #Transformada de Fresnel
 
-# Importar librer�as necesarias
+# Importar librerias necesarias
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
 
-#Crear campos �pticos de entrada
+#Crear campos opticos de entrada
 class OpticalField:
     """
-    Clase para crear y gestionar un campo �ptico complejo 2D.
+    Clase para crear y gestionar un campo optico complejo 2D.
     """
     def __init__(self, size, pixel_pitch, wavelength):
         """
-        Inicializa la rejilla del campo �ptico.
+        Inicializa la rejilla del campo optico.
 
         Args:
-            size (int): Tama�o de la rejilla en p�xeles (ej. 1024).
-            pixel_pitch (float): Tama�o del p�xel en metros (ej. 1e-6 para 1 �m).
-            wavelength (float): Longitud de onda de la luz en metros (ej. 633e-9 para HeNe).
+            size (int): Tamano de la rejilla en pixeles.
+            pixel_pitch (float): Tamano del pixel en metros.
+            wavelength (float): Longitud de onda de la luz en metros.
         """
         self.size = size
         self.pixel_pitch = pixel_pitch
@@ -27,19 +27,19 @@ class OpticalField:
         # El campo se inicializa como cero (completamente oscuro)
         self.field = np.zeros((size, size), dtype=np.complex128)
 
-        # Creamos las coordenadas f�sicas de la rejilla
-        # El centro f�sico de la rejilla estar� en (0, 0)
+        # Creamos las coordenadas fisicas de la rejilla
+        # El centro fisico de la rejilla estara en (0, 0)
         grid_span = size * pixel_pitch
         coords = np.linspace(-grid_span / 2, grid_span / 2, size)
         self.x_coords, self.y_coords = np.meshgrid(coords, coords)
 
     def add_aperture(self, shape, center=(0, 0), size=None, value=1.0 + 0j):
         """
-        A�ade una apertura de una forma espec�fica al campo.
-        El valor se multiplica por la m�scara de la forma, no la reemplaza.
+        Anade una apertura de una forma especifica al campo.
+        El valor se multiplica por la mascara de la forma, no la reemplaza.
         """
         if size is None:
-            raise ValueError("El tama�o (size) debe ser especificado.")
+            raise ValueError("El tamano (size) debe ser especificado.")
 
         # --- M�SCARAS BINARIAS (0 o 1) ---
         if shape.lower() == 'circ':
@@ -54,7 +54,7 @@ class OpticalField:
                          (np.abs(self.y_coords - center[1]) < height / 2.0)
             self.field += mask_shape.astype(np.complex128) * value
 
-        # --- M�SCARAS GRADUALES (valores entre 0 y 1) ---
+        # --- MASCARAS GRADUALES (valores entre 0 y 1) ---
         elif shape.lower() == 'gauss':
             # Para un Gaussiano, 'size' representa el radio de la viga (beam waist, w0)
             # donde la amplitud cae a 1/e (~37%).
@@ -67,7 +67,7 @@ class OpticalField:
             self.field += mask_shape.astype(np.complex128) * value
 
         elif shape.lower() == 'sinc':
-            # Para un Sinc, 'size' representa el ancho del l�bulo principal.
+            # Para un Sinc, 'size' representa el ancho del lobulo principal.
             # Usamos np.sinc(x) que es sin(pi*x)/(pi*x)
             width = size
             # Coordenadas relativas normalizadas
@@ -80,7 +80,7 @@ class OpticalField:
         elif shape.lower() == 'ronchi':
             # Para una rejilla Ronchi, 'size' representa el periodo 'd' en metros.
             periodo = size
-            # Generamos una onda cuadrada usando la funci�n seno y sign.
+            # Generamos una onda cuadrada usando la funcion seno y sign.
             # np.sin(2 * np.pi * self.x_coords / periodo) crea una onda senoidal.
             # np.sign() la convierte en una onda cuadrada (-1 y 1).
             # Sumamos 1 y dividimos por 2 para que sea 0 y 1.
@@ -92,20 +92,18 @@ class OpticalField:
             raise ValueError(f"Forma '{shape}' no reconocida. Use 'circ', 'rect', 'gauss', o 'sinc'.")
 
     def plot_intensity(self, title="Intensidad del Campo"):
-        """Visualiza la intensidad (amplitud al cuadrado) del campo."""
         plt.figure(figsize=(8, 8))
         # Usamos np.abs(self.field)**2 para la intensidad
         plt.imshow(np.abs(self.field)**2, cmap='gray',
                    extent=[self.x_coords.min(), self.x_coords.max(),
                            self.y_coords.min(), self.y_coords.max()])
         plt.title(title)
-        plt.xlabel("Posici�n X (m)")
-        plt.ylabel("Posici�n Y (m)")
+        plt.xlabel("Posicion X (m)")
+        plt.ylabel("Posicion Y (m)")
         plt.colorbar(label="Intensidad (unidades arbitrarias)")
         plt.show()
 
     def plot_phase(self, title="Fase del Campo"):
-        """Visualiza la fase del campo."""
         plt.figure(figsize=(8, 8))
         # Usamos np.angle para obtener la fase
         plt.imshow(np.angle(self.field), cmap='twilight_shifted',
@@ -114,27 +112,27 @@ class OpticalField:
 
 
         plt.title(title)
-        plt.xlabel("Posici�n X (m)")
-        plt.ylabel("Posici�n Y (m)")
+        plt.xlabel("Posicion X (m)")
+        plt.ylabel("Posicion Y (m)")
         plt.colorbar(label="Fase (radianes)")
         plt.show()
 
     def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
         """
-        Carga una imagen desde un archivo y la a�ade al campo como una m�scara de amplitud.
+        Carga una imagen desde un archivo y la anade al campo como una mascara de amplitud.
 
         Args:
             filepath (str): Ruta al archivo de la imagen (PNG, JPG, etc.).
-            target_width (float): Ancho f�sico deseado para la imagen en la rejilla (en metros).
-                                  La altura se escalar� para mantener la proporci�n.
-            center (tuple): Coordenadas (x, y) donde se centrar� la imagen (en metros).
-            value (complex): Valor complejo que modular� la imagen. Por defecto es 1.0 (amplitud pura).
+            target_width (float): Ancho fisico deseado para la imagen en la rejilla (en metros).
+                                  La altura se escalara para mantener la proporcion.
+            center (tuple): Coordenadas (x, y) donde se centrara la imagen (en metros).
+            value (complex): Valor complejo que modulara la imagen. Por defecto es 1.0 (amplitud pura).
         """
         try:
             # 1. Cargar la imagen y convertirla a escala de grises (modo 'L')
             img = Image.open(filepath).convert('L')
         except FileNotFoundError:
-            print(f"Error: No se encontr� el archivo en la ruta: {filepath}")
+            print(f"Error: No se encontro el archivo en la ruta: {filepath}")
             return
 
         # 2. Convertir la imagen a un array de NumPy y normalizarla (0-255 -> 0.0-1.0)
@@ -174,10 +172,10 @@ class OpticalField:
 
         # Seguridad: Asegurarse de que la imagen no se sale de la rejilla
         if start_x < 0 or end_x > self.size or start_y < 0 or end_y > self.size:
-            print("Advertencia: La imagen es demasiado grande o est� descentrada y excede los l�mites de la rejilla. Ser� recortada.")
-            # Esta parte se podr�a hacer m�s robusta con clipping, pero por ahora lo dejamos as�.
+            print("Advertencia: La imagen es demasiado grande o esta descentrada y excede los limites de la rejilla. Sera recortada.")
+            # Esta parte se podria hacer mas robusta con clipping, pero por ahora lo dejamos asi.
 
-        # 6. Pegar la imagen en el campo �ptico
+        # 6. Pegar la imagen en el campo optico
         self.field[start_y:end_y, start_x:end_x] += resized_array.astype(np.complex128) * value
 
 def propagate_fresnel_fft(input_field_obj, z):
@@ -242,7 +240,7 @@ if __name__ == "__main__":
     # --- PARAMETROS DE LA SIMULACION ---
 
     PIXEL_PITCH_1 = 5.3e-6 
-    GRID_SIZE = 1080
+    GRID_SIZE = 2048
     WAVELENGTH = 633E-9
 
    
@@ -263,11 +261,3 @@ if __name__ == "__main__":
     campo_salida=propagate_fresnel_fft(campo_entrada, (0.1946))
     campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.1946))
 
-    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2446))
-    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2446))
-
-    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2946))
-    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2946))
-
-    campo_salida=propagate_fresnel_fft(campo_entrada, (0.3446))
-    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.3446))
