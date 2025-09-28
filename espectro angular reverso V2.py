@@ -183,126 +183,48 @@ def propagate_asm(input_field, z, padding_factor=2):
         OpticalField: Un nuevo objeto OpticalField con el campo propagado.
     """
 
-        # --- Paso 1: Extraer parámetros y preparar el padding ---
+ # --- Paso 1: Extraer par�metros y preparar el padding ---
     U_in_original = input_field.field
     lambda_ = input_field.wavelength
-    dx_original = input_field.pixel_pitch
+    dx = input_field.pixel_pitch  # El tama�o de p�xel es el mismo en toda la simulaci�n
     N_original = input_field.size
-
-    # Nuevo tamaño de la rejilla con padding
     N_padded = N_original * padding_factor
 
-    # El tamaño del píxel no cambia con el padding
-    dx_padded = dx_original
-
-    # Crear una nueva rejilla grande llena de ceros
+    # Crear una nueva rejilla grande e incrustar el campo original en el centro
     U_in_padded = np.zeros((N_padded, N_padded), dtype=np.complex128)
-
-    # Calcular las coordenadas para incrustar el campo original en el centro
     start = (N_padded - N_original) // 2
     end = start + N_original
     U_in_padded[start:end, start:end] = U_in_original
 
-    # --- El resto del algoritmo se ejecuta en la rejilla grande ---
+    # --- Paso 2: Propagaci�n en el dominio de la frecuencia (sin shifts incorrectos) ---
+    # Calcular el espectro de frecuencias (f=0 est� en la esquina)
+    A = fft.fft2(U_in_padded)
 
-    # Calcular el espectro de frecuencias espaciales del campo con padding
-    A_shifted = np.fft.fft2(U_in_padded)
-
-    # --- Construir la Función de Transferencia (H) para la rejilla grande ---
-    freq_coords_1d = np.fft.fftfreq(N_padded, dx_padded)
+    # Construir la Funci�n de Transferencia (H)
+    freq_coords_1d = fft.fftfreq(N_padded, dx)
     fx, fy = np.meshgrid(freq_coords_1d, freq_coords_1d)
 
     k = 2 * np.pi / lambda_
-    term_sqrt = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
-    mask = term_sqrt >= 0
+    
+    # El t�rmino dentro de la ra�z cuadrada
+    # Se pone a cero si es negativo para evitar errores y manejar ondas evanescentes
+    term_sqrt_sq = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
+    term_sqrt = np.sqrt(np.maximum(term_sqrt_sq, 0))
 
-    H = np.zeros((N_padded, N_padded), dtype=np.complex128)
-    H[mask] = np.exp(1j * k * z * np.sqrt(term_sqrt[mask]))
+    H = np.exp(1j * k * z * term_sqrt)
+    
+    # Multiplicar en el dominio de la frecuencia
+    A_out = A * H
 
-    # --- Propagación en el dominio de la frecuencia ---
-    A_out_shifted = A_shifted * H
+    # Volver al dominio espacial
+    U_out_padded = fft.ifft2(A_out)
 
-    # --- Des-centrar e IFFT ---
-    A_out = np.fft.ifftshift(A_out_shifted)
-    U_out_padded = np.fft.ifft2(A_out)
-
-    # --- Paso Final: Recortar la región central ---
-    # Recortamos el resultado para que coincida con el tamaño original de entrada.
+    # --- Paso 3: Recortar la regi�n central ---
     U_out_original = U_out_padded[start:end, start:end]
 
-    # --- Devolver el resultado como un nuevo objeto OpticalField ---
-    output_field = OpticalField(size=N_original, pixel_pitch=dx_original, wavelength=lambda_)
+    # Devolver el resultado como un nuevo objeto OpticalField
+    output_field = OpticalField(size=N_original, pixel_pitch=dx, wavelength=lambda_)
     output_field.field = U_out_original
-
-    return output_field
-
-
-def propagate_asm_back(input_field, z, padding_factor=2):
-    """
-    Propaga un campo óptico una distancia z usando el método del espectro angular.
-
-    Args:
-        input_field (OpticalField): El objeto OpticalField que contiene el campo de entrada.
-        z (float): La distancia de propagación en metros.
-          padding_factor (int): Factor por el cual se aumenta el tamaño de la rejilla
-                              internamente (ej. 2 significa duplicar las dimensiones).
-
-
-    Returns:
-        OpticalField: Un nuevo objeto OpticalField con el campo propagado.
-    """
-
-        # --- Paso 1: Extraer parámetros y preparar el padding ---
-    U_in_original = input_field.field
-    lambda_ = input_field.wavelength
-    dx_original = input_field.pixel_pitch
-    N_original = input_field.size
-
-    # Nuevo tamaño de la rejilla con padding
-    N_padded = N_original * padding_factor
-
-    # El tamaño del píxel no cambia con el padding
-    dx_padded = dx_original
-
-    # Crear una nueva rejilla grande llena de ceros
-    U_in_padded = np.zeros((N_padded, N_padded), dtype=np.complex128)
-
-    # Calcular las coordenadas para incrustar el campo original en el centro
-    start = (N_padded - N_original) // 2
-    end = start + N_original
-    U_in_padded[start:end, start:end] = U_in_original
-
-    # --- El resto del algoritmo se ejecuta en la rejilla grande ---
-
-    # Calcular el espectro de frecuencias espaciales del campo con padding
-    A_shifted = np.fft.fft2(U_in_padded)
-
-    # --- Construir la Función de Transferencia (H) para la rejilla grande ---
-    freq_coords_1d = np.fft.fftfreq(N_padded, dx_padded)
-    fx, fy = np.meshgrid(freq_coords_1d, freq_coords_1d)
-
-    k = 2 * np.pi / lambda_
-    term_sqrt = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
-    mask = term_sqrt >= 0
-
-    H = np.zeros((N_padded, N_padded), dtype=np.complex128)
-    H[mask] = np.exp(1j * k * z * np.sqrt(term_sqrt[mask]))
-
-    # --- Propagación en el dominio de la frecuencia ---
-    A_out_shifted = A_shifted * H
-
-    # --- Des-centrar e IFFT ---
-    A_out = np.fft.ifftshift(A_out_shifted)
-    U_out_padded = np.fft.ifft2(A_out)
-
-    # --- Paso Final: Recortar la región central ---
-    # Recortamos el resultado para que coincida con el tamaño original de entrada.
-    U_out_original = U_out_padded[start:end, start:end]
-
-    # --- Devolver el resultado como un nuevo objeto OpticalField ---
-    output_field = OpticalField(size=N_original, pixel_pitch=dx_original, wavelength=lambda_)
-    output_field.field = U_out_original
-
     return output_field
 
 #______________________________________________________________________________________________________
@@ -312,7 +234,7 @@ def propagate_asm_back(input_field, z, padding_factor=2):
 
 
 # --- PARÁMETROS DE LA SIMULACIÓN ---
-PIXEL_PITCH = 1e-6
+PIXEL_PITCH = 1.85e-6
 GRID_SIZE = 4096    
 WAVELENGTH = 633E-9
 
@@ -322,7 +244,7 @@ print("z <= ", limite*100, "cm")
 
 # --- Crear el campo óptico inicial ---
 campo_in = OpticalField(size=GRID_SIZE,pixel_pitch=PIXEL_PITCH,wavelength=WAVELENGTH)
-campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",1024)
+campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",3000*PIXEL_PITCH)
 
 # Visualizar el resultado
 campo_in.plot_intensity(title="Intensidad de la apertura")
