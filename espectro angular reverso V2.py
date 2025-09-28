@@ -1,11 +1,11 @@
-# Importar librer√≠as necesarias
+# Importar libreriaas necesarias
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
 
 
-#Crear campos √≥pticos de entrada
+#Crear campos oppticos de entrada
 class OpticalField:
     """
     Clase para crear y gestionar un campo √≥ptico complejo 2D.
@@ -230,26 +230,157 @@ def propagate_asm(input_field, z, padding_factor=2):
 #______________________________________________________________________________________________________
 
 
-#Ejemplo plano √≥ptico de entrada
+# --- PARÁMETROS DE LA SIMULACIÓN CORREGIDOS ---
+# Usamos los parámetros de tu cámara DMM37UX226-ML
+PIXEL_PITCH = 1.85e-6  # 1.85 µm
+GRID_SIZE = 4096      # Potencia de 2, ligeramente mayor a la dimensión de la cámara
+WAVELENGTH = 632.9e-9   #láser HeNe
+D1 = 2e-3   # 2 mm
+D2 = 14e-3  # 14 mm
 
 
-# --- PAR√ÅMETROS DE LA SIMULACI√ìN ---
-PIXEL_PITCH = 1.85e-6
-GRID_SIZE = 4096    
-WAVELENGTH = 633E-9
+# ==============================================================================
+# PASO 1: CARGAR LAS IMÁGENES USANDO EL MÉTODO add_image
+# ==============================================================================
+print("Cargando imágenes de difracción en los campos ópticos...")
 
-limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+# Rutas a los archivos
+filepath_d1 = '2mm cortado.tiff'
+filepath_d2 = '14mm cortada.tiff'
 
-print("z <= ", limite*100, "cm")
+# Define el ancho físico que ocupará tu holograma en la rejilla.
+# Debería corresponder al tamaño del área del sensor que usaste.
+# Por ejemplo, si tu recorte fue de 3500 píxeles de ancho:
+ancho_fisico_holograma = 3500 * PIXEL_PITCH 
 
-# --- Crear el campo √≥ptico inicial ---
-campo_in = OpticalField(size=GRID_SIZE,pixel_pitch=PIXEL_PITCH,wavelength=WAVELENGTH)
-campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",3000*PIXEL_PITCH)
+# Crear un campo óptico para el holograma en D1
+campo_d1_medido = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d1_medido.add_image(filepath_d1, target_width=ancho_fisico_holograma)
 
-# Visualizar el resultado
-campo_in.plot_intensity(title="Intensidad de la apertura")
+# Crear un campo óptico para el holograma en D2
+campo_d2_medido = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d2_medido.add_image(filepath_d2, target_width=ancho_fisico_holograma)
 
-A_prop=propagate_asm(campo_in,2e-3,2)
+# Extraemos la Amplitud de los campos y la normalizamos
+# np.abs() funciona sobre el campo complejo para darnos la amplitud
+Amp_d1 = np.abs(campo_d1_medido.field)
+Amp_d2 = np.abs(campo_d2_medido.field)
 
-A_prop.plot_intensity(title="intesidad campo proapagado")
+if np.max(Amp_d1) > 0 and np.max(Amp_d2) > 0:
+    Amp_d1 /= np.max(Amp_d1)
+    Amp_d2 /= np.max(Amp_d2)
+    print("Imágenes cargadas y normalizadas correctamente.")
+else:
+    print("Error: Una de las imágenes parece estar completamente negra después de cargarla.")
+
+# Opcional: Visualiza los hologramas cargados para verificar que todo está bien
+campo_d1_medido.plot_intensity("Holograma Medido en D1 (2mm)")
+campo_d2_medido.plot_intensity("Holograma Medido en D2 (14mm)")
+
+# ==============================================================================
+# PASO 2: FUNCIÓN PARA CREAR LA FASE ESFÉRICA
+# ==============================================================================
+
+def crear_fase_esferica(campo_optico, z_fuente):
+    """
+    Genera una máscara de fase correspondiente a una onda esférica.
+
+    Args:
+        campo_optico (OpticalField): El campo para el cual se genera la fase.
+                                     Se usa para obtener las coordenadas y la longitud de onda.
+        z_fuente (float): Distancia de la fuente puntual al plano. Es el radio de curvatura.
+
+    Returns:
+        np.ndarray: Un array 2D complejo con la máscara de fase.
+    """
+    k = 2 * np.pi / campo_optico.wavelength
+    x = campo_optico.x_coords
+    y = campo_optico.y_coords
+
+    # Usamos la aproximación paraxial (Fórmula de Fresnel) que es muy precisa para estas distancias
+    # Fase = exp(j * k * (x^2 + y^2) / (2 * z))
+    termino_fase = (k * (x**2 + y**2)) / (2 * z_fuente)
+    
+    return np.exp(1j * termino_fase)
+
+# ==============================================================================
+# PASO 3: BÚSQUEDA Y OPTIMIZACIÓN DEL PARÁMETRO DE FASE (z_fuente)
+# ==============================================================================
+print("\nIniciando proceso de optimización para encontrar z_fuente...")
+
+# Creamos un rango de distancias de fuente para probar.
+# Este rango es una suposición inicial. Si el mínimo está en un extremo,
+# deberás ampliar el rango. Empecemos con algo razonable.
+z_fuentes_a_probar = np.linspace(1e-3, 30e-3, 100) # Probar de 1mm a 30mm en 100 pasos
+errores = []
+
+# Distancia de retro-propagación (de D2 a D1)
+distancia_propagacion = D1 - D2 # Será -0.012 m
+
+# El campo objetivo contra el que compararemos
+intensidad_objetivo_d1 = Amp_d1**2
+
+for zf in z_fuentes_a_probar:
+    # 1. Crear el campo inicial en D2. Amplitud medida, fase plana.
+    campo_d2 = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+    campo_d2.field = Amp_d2.astype(np.complex128)
+
+    # 2. Crear y aplicar la fase esférica de prueba
+    fase_prueba = crear_fase_esferica(campo_d2, zf)
+    campo_d2.field *= fase_prueba
+    
+    # 3. Retro-propagar de D2 a D1
+    campo_propagado_a_d1 = propagate_asm(campo_d2, distancia_propagacion)
+
+    # 4. Calcular la intensidad y el error
+    intensidad_calculada_d1 = np.abs(campo_propagado_a_d1.field)**2
+    intensidad_calculada_d1 /= np.max(intensidad_calculada_d1) # Normalizar para comparar
+
+    error = np.mean((intensidad_objetivo_d1 - intensidad_calculada_d1)**2)
+    errores.append(error)
+    print(f"Probando z_fuente = {zf*1000:.2f} mm -> Error MSE = {error:.6f}")
+
+# Encontrar el mejor z_fuente
+min_error_idx = np.argmin(errores)
+z_fuente_optimo = z_fuentes_a_probar[min_error_idx]
+
+print(f"\n¡Optimización completada!")
+print(f"El valor óptimo para z_fuente es: {z_fuente_optimo * 1000:.3f} mm")
+
+# Visualizar la curva de error
+plt.figure()
+plt.plot(z_fuentes_a_probar * 1000, errores)
+plt.xlabel("Distancia de la fuente, z_fuente (mm)")
+plt.ylabel("Error Cuadrático Medio (MSE)")
+plt.title("Error de reconstrucción vs. z_fuente")
+plt.grid(True)
+plt.show()
+
+# ==============================================================================
+# PASO 4: RECONSTRUCCIÓN FINAL CON LA FASE ÓPTIMA
+# ==============================================================================
+print("\nRealizando la reconstrucción final con la fase óptima...")
+
+# 1. Crear el campo en D1 con la amplitud medida
+campo_d1_final = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d1_final.field = Amp_d1.astype(np.complex128)
+
+# 2. Generar la fase esférica óptima
+fase_optima = crear_fase_esferica(campo_d1_final, z_fuente_optimo)
+
+# 3. Aplicar la corrección de fase
+campo_d1_final.field *= fase_optima
+
+# 4. Retro-propagar desde D1 hasta el plano del objeto (z=0)
+distancia_reconstruccion = -D1
+campo_reconstruido = propagate_asm(campo_d1_final, distancia_reconstruccion)
+
+# 5. Visualizar la imagen reconstruida (la intensidad)
+campo_reconstruido.plot_intensity(title=f"Imagen Reconstruida (z_fuente = {z_fuente_optimo*1000:.2f} mm)")
+
+# También es útil ver la fase de la imagen reconstruida.
+# Si el objeto es de solo amplitud, la fase debería ser casi plana.
+campo_reconstruido.plot_phase(title=f"Fase de la Imagen Reconstruida")
+
+
 
