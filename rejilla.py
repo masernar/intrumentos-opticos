@@ -4,21 +4,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
+import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 
 
 #Crear campos ópticos de entrada
 class OpticalField:
-    """
-    Clase para crear y gestionar un campo óptico complejo 2D.
-    """
+    #Clase para crear y gestionar un campo óptico complejo 2D.
+    
     def __init__(self, size, pixel_pitch, wavelength):
         """
         Inicializa la rejilla del campo óptico.
 
         Args:
-            size (int): Tamaño de la rejilla en píxeles (ej. 1024).
-            pixel_pitch (float): Tamaño del píxel en metros (ej. 1e-6 para 1 µm).
-            wavelength (float): Longitud de onda de la luz en metros (ej. 633e-9 para HeNe).
+            size (int): Tamaño de la rejilla en píxeles.
+            pixel_pitch (float): Tamaño del píxel en metros.
+            wavelength (float): Longitud de onda de la luz en metros.
         """
         self.size = size
         self.pixel_pitch = pixel_pitch
@@ -57,7 +56,6 @@ class OpticalField:
         # --- MÁSCARAS GRADUALES (valores entre 0 y 1) ---
         elif shape.lower() == 'gauss':
             # Para un Gaussiano, 'size' representa el radio de la viga (beam waist, w0)
-            # donde la amplitud cae a 1/e (~37%).
             w0 = size
             # Coordenadas relativas al centro
             x_rel = self.x_coords - center[0]
@@ -147,8 +145,8 @@ class OpticalField:
         target_width_px = int(target_width / self.pixel_pitch)
         target_height_px = int(target_width_px * aspect_ratio)
 
-        # 4. Redimensionar la imagen a los píxeles calculados usando un filtro de alta calidad
-        # Creamos una nueva imagen de Pillow desde nuestro array normalizado para redimensionar
+        # 4. Redimensionar la imagen a los píxeles calculados
+        # Creamos una nueva imagen desde nuestro array normalizado para redimensionar
         img_to_resize = Image.fromarray((img_array * 255).astype(np.uint8))
         resized_img = img_to_resize.resize((target_width_px, target_height_px), Image.Resampling.LANCZOS)
 
@@ -172,11 +170,10 @@ class OpticalField:
         end_x = start_x + target_width_px
         end_y = start_y + target_height_px
 
-        # Seguridad: Asegurarse de que la imagen no se sale de la rejilla
+        # Asegurarse de que la imagen no se sale de la rejilla
         if start_x < 0 or end_x > self.size or start_y < 0 or end_y > self.size:
             print("Advertencia: La imagen es demasiado grande o está descentrada y excede los límites de la rejilla. Será recortada.")
-            # Esta parte se podría hacer más robusta con clipping, pero por ahora lo dejamos así.
-
+            
         # 6. Pegar la imagen en el campo óptico
         self.field[start_y:end_y, start_x:end_x] += resized_array.astype(np.complex128) * value
 
@@ -218,10 +215,10 @@ def propagate_fresnel_fft(input_field_obj, z):
     x_out = output_field_obj.x_coords
     y_out = output_field_obj.y_coords
 
-    # 7. Calcular los factores de propagación usando las coordenadas CORRECTAS
+    # 7. Calcular los factores de propagación usando las coordenadas adecuadas
     global_factor = np.exp(1j * k * z) / (1j * wavelength * z)
     
-    # La fase de salida AHORA usa las coordenadas del plano de salida (x_out, y_out)
+    # La fase de salida usa las coordenadas del plano de salida (x_out, y_out)
     phase_out = np.exp(1j * k / (2 * z) * (x_out**2 + y_out**2))
     
     scaling_factor = dx_in**2
@@ -239,14 +236,14 @@ def propagate_fresnel_fft(input_field_obj, z):
 
 if __name__ == "__main__":
     # --- PARÁMETROS FÍSICOS DEL PROBLEMA ---
-    WAVELENGTH = 633e-9   # 633 nm
+    WAVELENGTH = 632.9e-9   # 633 nm
     PERIODO_REJILLA = 100e-6 # 10 pares/mm -> d = 100 µm
 
     # --- PARÁMETROS DE LA SIMULACIÓN ---
     # Necesitamos píxeles pequeños para resolver bien el periodo de 100 µm.
     # Usemos al menos 10 píxeles por periodo.
-    PIXEL_PITCH = 2e-6   # 2 µm por píxel (50 píxeles por periodo, ¡excelente!)
-    GRID_SIZE = 2048     # Una rejilla grande para ver varios periodos
+    PIXEL_PITCH = 2e-6   # 2 µm por píxel
+    GRID_SIZE = 2048       # Una rejilla grande para ver varios periodos
 
     limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
 
@@ -268,7 +265,7 @@ if __name__ == "__main__":
     campo_entrada.plot_intensity("Rejilla Ronchi de Entrada (d=100 µm)")
 
     # --- 2. Propagar y estudiar la formación de autoimágenes ---
-    # Vamos a probar las distancias que calculamos analíticamente.
+    # Probar las distancias que calculamos analíticamente.
 
     # Propagación a z_T / 4
     print(f"\nPropagando a z_T/4 = {z_talbot/4 * 100:.2f} cm...")
@@ -286,6 +283,6 @@ if __name__ == "__main__":
     campo_zt_completa.plot_intensity(f"Intensidad a z_T ({z_talbot * 100:.2f} cm) - Autoimagen")
 
      # Propagación a 2*z_T (Distancia de Talbot completa)
-    print(f"\nPropagando a z_T = {2*z_talbot * 100:.2f} cm...")
+    print(f"\nPropagando a 2*z_T = {2*z_talbot * 100:.2f} cm...")
     campo_zt_completa = propagate_fresnel_fft(campo_entrada, z_talbot)
     campo_zt_completa.plot_intensity(f"Intensidad a z_T ({2*z_talbot * 100:.2f} cm) - Autoimagen")
