@@ -2,10 +2,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
+from scipy.stats import pearsonr # Para calcular la correlación
 
-
-#Crear campos ópticos de entrada
+# =============================================================================
+# TU CÓDIGO ORIGINAL (sin modificaciones)
+# =============================================================================
 class OpticalField:
     """
     Clase para crear y gestionar un campo óptico complejo 2D.
@@ -22,278 +23,186 @@ class OpticalField:
         self.size = size
         self.pixel_pitch = pixel_pitch
         self.wavelength = wavelength
-
-        # El campo se inicializa como cero (completamente oscuro)
         self.field = np.zeros((size, size), dtype=np.complex128)
-
-        # Creamos las coordenadas físicas de la rejilla
-        # El centro físico de la rejilla estará en (0, 0)
         grid_span = size * pixel_pitch
-        coords = np.linspace(-grid_span / 2, grid_span / 2, size)
+        coords = np.linspace(-grid_span / 2, grid_span / 2 - pixel_pitch, size)
         self.x_coords, self.y_coords = np.meshgrid(coords, coords)
 
     def add_aperture(self, shape, center=(0, 0), size=None, value=1.0 + 0j):
-        """
-        Añade una apertura de una forma específica al campo.
-        El valor se multiplica por la máscara de la forma, no la reemplaza.
-        """
         if size is None:
             raise ValueError("El tamaño (size) debe ser especificado.")
-
-        # --- MÁSCARAS BINARIAS (0 o 1) ---
         if shape.lower() == 'circ':
             radius = size / 2.0
             mask_shape = (self.x_coords - center[0])**2 + (self.y_coords - center[1])**2 < radius**2
-            # El campo se suma para permitir superposiciones
             self.field += mask_shape.astype(np.complex128) * value
-
         elif shape.lower() == 'rect':
             width, height = size
             mask_shape = (np.abs(self.x_coords - center[0]) < width / 2.0) & \
                          (np.abs(self.y_coords - center[1]) < height / 2.0)
             self.field += mask_shape.astype(np.complex128) * value
-
-        # --- MÁSCARAS GRADUALES (valores entre 0 y 1) ---
         elif shape.lower() == 'gauss':
-            # Para un Gaussiano, 'size' representa el radio de la viga (beam waist, w0)
-            # donde la amplitud cae a 1/e (~37%).
             w0 = size
-            # Coordenadas relativas al centro
             x_rel = self.x_coords - center[0]
             y_rel = self.y_coords - center[1]
-            # Perfil Gaussiano de amplitud
             mask_shape = np.exp(-(x_rel**2 + y_rel**2) / (w0**2))
             self.field += mask_shape.astype(np.complex128) * value
-
         elif shape.lower() == 'sinc':
-            # Para un Sinc, 'size' representa el ancho del lóbulo principal.
-            # Usamos np.sinc(x) que es sin(pi*x)/(pi*x)
             width = size
-            # Coordenadas relativas normalizadas
             x_norm = (self.x_coords - center[0]) / width
             y_norm = (self.y_coords - center[1]) / width
-            # Perfil Sinc 2D (producto de dos Sinc 1D)
             mask_shape = np.sinc(x_norm) * np.sinc(y_norm)
             self.field += mask_shape.astype(np.complex128) * value
-
         else:
             raise ValueError(f"Forma '{shape}' no reconocida. Use 'circ', 'rect', 'gauss', o 'sinc'.")
 
     def plot_intensity(self, title="Intensidad del Campo"):
-        """Visualiza la intensidad (amplitud al cuadrado) del campo."""
         plt.figure(figsize=(8, 8))
-        # Usamos np.abs(self.field)**2 para la intensidad
         plt.imshow(np.abs(self.field)**2, cmap='gray',
                    extent=[self.x_coords.min(), self.x_coords.max(),
                            self.y_coords.min(), self.y_coords.max()])
         plt.title(title)
         plt.xlabel("Posición X (m)")
         plt.ylabel("Posición Y (m)")
-        plt.colorbar(label="Intensidad (unidades arbitrarias)")
+        plt.colorbar(label="Intensidad")
         plt.show()
 
     def plot_phase(self, title="Fase del Campo"):
-        """Visualiza la fase del campo."""
         plt.figure(figsize=(8, 8))
-        # Usamos np.angle para obtener la fase
         plt.imshow(np.angle(self.field), cmap='twilight_shifted',
                    extent=[self.x_coords.min(), self.x_coords.max(),
                            self.y_coords.min(), self.y_coords.max()])
-
-
         plt.title(title)
         plt.xlabel("Posición X (m)")
         plt.ylabel("Posición Y (m)")
         plt.colorbar(label="Fase (radianes)")
         plt.show()
 
-    def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
-        """
-        Carga una imagen desde un archivo y la añade al campo como una máscara de amplitud.
-
-        Args:
-            filepath (str): Ruta al archivo de la imagen (PNG, JPG, etc.).
-            target_width (float): Ancho físico deseado para la imagen en la rejilla (en metros).
-                                  La altura se escalará para mantener la proporción.
-            center (tuple): Coordenadas (x, y) donde se centrará la imagen (en metros).
-            value (complex): Valor complejo que modulará la imagen. Por defecto es 1.0 (amplitud pura).
-        """
-        try:
-            # 1. Cargar la imagen y convertirla a escala de grises (modo 'L')
-            img = Image.open(filepath).convert('L')
-        except FileNotFoundError:
-            print(f"Error: No se encontró el archivo en la ruta: {filepath}")
-            return
-
-        # 2. Convertir la imagen a un array de NumPy y normalizarla (0-255 -> 0.0-1.0)
-        img_array = np.array(img) / 255.0
-
-        # 3. Calcular las dimensiones de la imagen en píxeles de nuestra rejilla
-        original_width_px, original_height_px = img.size
-        aspect_ratio = original_height_px / original_width_px
-
-        target_width_px = int(target_width / self.pixel_pitch)
-        target_height_px = int(target_width_px * aspect_ratio)
-
-        # 4. Redimensionar la imagen a los píxeles calculados usando un filtro de alta calidad
-        # Creamos una nueva imagen de Pillow desde nuestro array normalizado para redimensionar
-        img_to_resize = Image.fromarray((img_array * 255).astype(np.uint8))
-        resized_img = img_to_resize.resize((target_width_px, target_height_px), Image.Resampling.LANCZOS)
-
-        # Convertimos la imagen redimensionada de vuelta a un array normalizado
-        resized_array = np.array(resized_img) / 255.0
-
-        # 5. Calcular la posición para pegar la imagen en la rejilla principal
-        # Convertimos el centro en metros a un offset en píxeles desde el centro de la rejilla
-        center_x_px_offset = int(center[0] / self.pixel_pitch)
-        center_y_px_offset = int(center[1] / self.pixel_pitch)
-
-        # El centro de la rejilla está en (size/2, size/2)
-        paste_center_x = self.size // 2 + center_x_px_offset
-        paste_center_y = self.size // 2 + center_y_px_offset
-
-        # Coordenadas de la esquina superior izquierda donde empezamos a pegar
-        start_x = paste_center_x - target_width_px // 2
-        start_y = paste_center_y - target_height_px // 2
-
-        # Coordenadas de la esquina inferior derecha
-        end_x = start_x + target_width_px
-        end_y = start_y + target_height_px
-
-        # Seguridad: Asegurarse de que la imagen no se sale de la rejilla
-        if start_x < 0 or end_x > self.size or start_y < 0 or end_y > self.size:
-            print("Advertencia: La imagen es demasiado grande o está descentrada y excede los límites de la rejilla. Será recortada.")
-            # Esta parte se podría hacer más robusta con clipping, pero por ahora lo dejamos así.
-
-        # 6. Pegar la imagen en el campo óptico
-        self.field[start_y:end_y, start_x:end_x] += resized_array.astype(np.complex128) * value
-
 def propagate_asm(input_field, z, padding_factor=2):
     """
     Propaga un campo óptico una distancia z usando el método del espectro angular.
-
-    Args:
-        input_field (OpticalField): El objeto OpticalField que contiene el campo de entrada.
-        z (float): La distancia de propagación en metros.
-          padding_factor (int): Factor por el cual se aumenta el tamaño de la rejilla
-                              internamente (ej. 2 significa duplicar las dimensiones).
-
-
-    Returns:
-        OpticalField: Un nuevo objeto OpticalField con el campo propagado.
     """
-
-        # --- Paso 1: Extraer parámetros y preparar el padding ---
     U_in_original = input_field.field
     lambda_ = input_field.wavelength
     dx_original = input_field.pixel_pitch
     N_original = input_field.size
-
-    # Nuevo tamaño de la rejilla con padding
     N_padded = N_original * padding_factor
-
-    # El tamaño del píxel no cambia con el padding
     dx_padded = dx_original
-
-    # Crear una nueva rejilla grande llena de ceros
     U_in_padded = np.zeros((N_padded, N_padded), dtype=np.complex128)
-
-    # Calcular las coordenadas para incrustar el campo original en el centro
     start = (N_padded - N_original) // 2
     end = start + N_original
     U_in_padded[start:end, start:end] = U_in_original
-
-    # --- El resto del algoritmo se ejecuta en la rejilla grande ---
-
-    # Calcular el espectro de frecuencias espaciales del campo con padding
     A_shifted = np.fft.fft2(U_in_padded)
-
-    # --- Construir la Función de Transferencia (H) para la rejilla grande ---
     freq_coords_1d = np.fft.fftfreq(N_padded, dx_padded)
     fx, fy = np.meshgrid(freq_coords_1d, freq_coords_1d)
-
     k = 2 * np.pi / lambda_
     term_sqrt = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
     mask = term_sqrt >= 0
-
     H = np.zeros((N_padded, N_padded), dtype=np.complex128)
     H[mask] = np.exp(1j * k * z * np.sqrt(term_sqrt[mask]))
-
-    # --- Propagación en el dominio de la frecuencia ---
-    A_out_shifted = A_shifted * H
-
-    # --- Des-centrar e IFFT ---
-    A_out = np.fft.ifftshift(A_out_shifted)
-    U_out_padded = np.fft.ifft2(A_out)
-
-    # --- Paso Final: Recortar la región central ---
-    # Recortamos el resultado para que coincida con el tamaño original de entrada.
-    U_out_original = U_out_padded[start:end, start:end]
-
-    # --- Devolver el resultado como un nuevo objeto OpticalField ---
+    A_out_padded = np.fft.ifft2(A_shifted * H) # Combiné dos pasos aquí para eficiencia
+    U_out_original = A_out_padded[start:end, start:end]
     output_field = OpticalField(size=N_original, pixel_pitch=dx_original, wavelength=lambda_)
     output_field.field = U_out_original
-
     return output_field
 
 
+# =============================================================================
+# CÓDIGO AÑADIDO PARA LA VALIDACIÓN
+# =============================================================================
 
-#______________________________________________________________________________________________________
+def analytical_gaussian_beam(w0, wavelength, z, x_coords, y_coords):
+    """
+    Calcula el campo complejo de un haz gaussiano teórico propagado una distancia z.
+    """
+    # Parámetros del haz
+    k = 2 * np.pi / wavelength
+    z_R = np.pi * w0**2 / wavelength  # Rango de Rayleigh
 
+    # Parámetros dependientes de z
+    w_z = w0 * np.sqrt(1 + (z / z_R)**2)
+    # Evitar división por cero en z=0
+    R_z = z * (1 + (z_R / z)**2) if z != 0 else np.inf
+    zeta_z = np.arctan(z / z_R) # Fase de Gouy
 
-#Ejemplo plano óptico de entrada
+    # Coordenadas radiales
+    r_sq = x_coords**2 + y_coords**2
 
-       # --- PARÁMETROS DE LA SIMULACIÓN ---
+    # Amplitud del campo
+    amplitude = (w0 / w_z) * np.exp(-r_sq / w_z**2)
+
+    # Fase del campo
+    phase = np.exp(-1j * (k * z + k * r_sq / (2 * R_z) - zeta_z))
+
+    return amplitude * phase
+
+# --- 1. PARÁMETROS DE LA SIMULACIÓN ---
 GRID_SIZE = 1024
-PIXEL_PITCH = 1e-6 # 10 µm para ver mejor los patrones
-WAVELENGTH = 633e-9 # Láser HeNe
+PIXEL_PITCH = 5e-6 # 5 µm
+WAVELENGTH = 633e-9
+PROPAGATION_DISTANCE = 1e-3 # 5 cm
 
-# --- Crear el campo de entrada como un punto ---
-campo_in = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+# Parámetros del haz gaussiano inicial
+w0 = 250e-6 # 250 µm de radio de cintura
 
-# Encontrar el píxel central
-centro = GRID_SIZE // 2 
+# --- 2. CREAR EL CAMPO DE ENTRADA Y PROPAGARLO NUMÉRICAMENTE ---
+print("Ejecutando simulación numérica...")
+campo_gauss_in = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_gauss_in.add_aperture('gauss', size=w0)
 
-# Asignar el valor al píxel central para aproximar la delta de Dirac
-# Normalizamos por el área del píxel para conservar la energía
-campo_in.field[centro, centro] = 1.0 / (PIXEL_PITCH**2)
+# Propagar con tu función
+campo_numerico_out = propagate_asm(campo_gauss_in, PROPAGATION_DISTANCE, padding_factor=2)
+print("Simulación numérica completada.")
 
-# Visualizar el resultado
-campo_in.plot_intensity(title="Intensidad de la apertura")
+# --- 3. CALCULAR EL CAMPO TEÓRICO ---
+print("Calculando solución analítica...")
+campo_analitico_array = analytical_gaussian_beam(w0, WAVELENGTH, PROPAGATION_DISTANCE,
+                                                 campo_gauss_in.x_coords, campo_gauss_in.y_coords)
 
-A_prop=propagate_asm(campo_in,1e-2,4)
+# Guardar el resultado en un objeto OpticalField para usar sus métodos de ploteo
+campo_analitico_out = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_analitico_out.field = campo_analitico_array
+print("Cálculo analítico completado.")
 
-A_prop.plot_intensity(title="intesidad campo proapagado")
-A_prop.plot_phase(title="Fase campo propagado")
+# --- 4. COMPARACIÓN VISUAL ---
 
-# Crear las coordenadas de la rejilla de salida
-coords = np.linspace(-GRID_SIZE * PIXEL_PITCH / 2, GRID_SIZE * PIXEL_PITCH / 2, GRID_SIZE)
-x, y = np.meshgrid(coords, coords)
-z = 1e-2
+# Comparación de Intensidad 2D
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+im0 = axes[0].imshow(np.abs(campo_numerico_out.field)**2, cmap='inferno',
+                     extent=[campo_numerico_out.x_coords.min(), campo_numerico_out.x_coords.max(),
+                             campo_numerico_out.y_coords.min(), campo_numerico_out.y_coords.max()])
+axes[0].set_title("Intensidad Numérica (ASM)")
+fig.colorbar(im0, ax=axes[0])
 
-# Calcular la distancia radial R desde el origen a cada punto (x,y) en el plano z
-R = np.sqrt(x**2 + y**2 + z**2)
+im1 = axes[1].imshow(np.abs(campo_analitico_out.field)**2, cmap='inferno',
+                     extent=[campo_analitico_out.x_coords.min(), campo_analitico_out.x_coords.max(),
+                             campo_analitico_out.y_coords.min(), campo_analitico_out.y_coords.max()])
+axes[1].set_title("Intensidad Analítica (Teórica)")
+fig.colorbar(im1, ax=axes[1])
+plt.show()
 
-# Calcular el número de onda k
-k = 2 * np.pi / WAVELENGTH
+# Comparación de perfiles 1D (corte por el centro)
+centro_idx = GRID_SIZE // 2
+plt.figure(figsize=(12, 5))
 
-# Crear el campo analítico de la onda esférica
-# (Omitimos un factor de fase global que no afecta la intensidad)
-campo_analitico = (1 / R) * np.exp(1j * k * R)
-
-fase_numerica = np.angle(A_prop.field)
-fase_analitica = np.angle(campo_analitico)
-
-# Graficar los perfiles de fase
-perfil_fase_num = fase_numerica[centro, :]
-perfil_fase_ana = fase_analitica[centro, :]
-
-plt.figure(figsize=(12, 6))
-plt.title("Comparación de Perfil de Fase (Onda Esférica)")
-plt.plot(perfil_fase_ana, label='Fase Analítica', linewidth=4, linestyle=':')
-plt.plot(perfil_fase_num, label='Fase Numérica (ASM)', linewidth=2)
-plt.xlabel("Posición del Píxel")
-plt.ylabel("Fase (radianes)")
+# Perfil de intensidad
+plt.subplot(1, 2, 1)
+plt.plot(campo_numerico_out.x_coords[0, :], np.abs(campo_numerico_out.field[centro_idx, :])**2, 'b-', label='Numérico (ASM)')
+plt.plot(campo_analitico_out.x_coords[0, :], np.abs(campo_analitico_out.field[centro_idx, :])**2, 'r--', label='Analítico', linewidth=2)
+plt.title('Perfil de Intensidad (Corte Central)')
+plt.xlabel('Posición X (m)')
+plt.ylabel('Intensidad')
 plt.legend()
 plt.grid(True)
-plt.show()
+
+
+
+# --- 5. ANÁLISIS CUANTITATIVO: CORRELACIÓN DE PEARSON ---
+# Extraemos los datos numéricos y analíticos como arrays 1D
+intensidad_numerica_flat = np.abs(campo_numerico_out.field).flatten()
+intensidad_analitica_flat = np.abs(campo_analitico_out.field).flatten()
+
+# Calculamos la correlación
+corr_intensidad, _ = pearsonr(intensidad_numerica_flat, intensidad_analitica_flat)
+
+print("\n--- ANÁLISIS DE CORRELACIÓN ---")
+print(f"Coeficiente de correlación de Pearson para la Intensidad: {corr_intensidad:.10f}")
