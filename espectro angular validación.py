@@ -172,12 +172,16 @@ im0 = axes[0].imshow(np.abs(campo_numerico_out.field)**2, cmap='inferno',
                              campo_numerico_out.y_coords.min(), campo_numerico_out.y_coords.max()])
 axes[0].set_title("Intensidad Numérica (ASM)")
 fig.colorbar(im0, ax=axes[0])
+plt.xlabel("Posición X (m)")
+plt.ylabel("Posición Y (m)")
 
 im1 = axes[1].imshow(np.abs(campo_analitico_out.field)**2, cmap='inferno',
                      extent=[campo_analitico_out.x_coords.min(), campo_analitico_out.x_coords.max(),
                              campo_analitico_out.y_coords.min(), campo_analitico_out.y_coords.max()])
 axes[1].set_title("Intensidad Analítica (Teórica)")
 fig.colorbar(im1, ax=axes[1])
+plt.xlabel("Posición X (m)")
+plt.ylabel("Posición Y (m)")
 plt.show()
 
 # Comparación de perfiles 1D (corte por el centro)
