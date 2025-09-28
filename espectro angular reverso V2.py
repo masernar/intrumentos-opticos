@@ -5,13 +5,11 @@ from PIL import Image
 import scipy.fft as fft
 from scipy.ndimage import laplace
 import time
-import sys
 
 # =====================================================================================
-# TU CÓDIGO ORIGINAL (CLASE Y FUNCIÓN DE PROPAGACIÓN)
+# CLASE Y FUNCIÓN DE PROPAGACIÓN (SIN CAMBIOS)
 # =====================================================================================
 class OpticalField:
-    # ... (Tu clase OpticalField sin cambios aquí) ...
     def __init__(self, size, pixel_pitch, wavelength):
         self.size = size
         self.pixel_pitch = pixel_pitch
@@ -22,8 +20,6 @@ class OpticalField:
         self.x_coords, self.y_coords = np.meshgrid(coords, coords)
 
     def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
-        # Este método es ideal para añadir 'objetos' a la simulación.
-        # Lo mantendremos aquí para futuros usos, pero no para cargar el holograma.
         try:
             img = Image.open(filepath).convert('L')
         except FileNotFoundError:
@@ -51,7 +47,6 @@ class OpticalField:
 
 
 def propagate_asm(input_field, z, padding_factor=1):
-    # ... (Tu función propagate_asm sin cambios aquí) ...
     U_in_original = input_field.field
     lambda_ = input_field.wavelength
     dx = input_field.pixel_pitch
@@ -76,14 +71,9 @@ def propagate_asm(input_field, z, padding_factor=1):
     return output_field
 
 # =====================================================================================
-# --- NUEVA FUNCIÓN AUXILIAR PARA CARGAR DATOS REALES ---
+# FUNCIÓN AUXILIAR PARA CARGAR DATOS REALES (SIN CAMBIOS)
 # =====================================================================================
-
 def create_field_from_intensity_image(filepath, grid_size, pixel_pitch, wavelength):
-    """
-    Carga una imagen de intensidad, la incrusta en el centro de una rejilla
-    del tamaño especificado (padding) y devuelve un objeto OpticalField.
-    """
     try:
         img_raw = Image.open(filepath).convert('L')
         img_array = np.array(img_raw)
@@ -94,99 +84,113 @@ def create_field_from_intensity_image(filepath, grid_size, pixel_pitch, waveleng
     h, w = img_array.shape
     print(f"Imagen original cargada: {w}x{h} píxeles.")
 
-    # Crear el lienzo o 'pad' del tamaño de la rejilla final
-    padded_array = np.zeros((grid_size, grid_size), dtype=img_array.dtype)
+    if h > grid_size or w > grid_size:
+        print(f"🚨 ERROR: La imagen ({w}x{h}) es más grande que el GRID_SIZE ({grid_size}).")
+        return None, None
 
-    # Calcular las coordenadas para pegar la imagen en el centro
-    start_h = grid_size // 2 - h // 2
-    start_w = grid_size // 2 - w // 2
-    end_h = start_h + h
-    end_w = start_w + w
-    
-    # Pegar la imagen
+    padded_array = np.zeros((grid_size, grid_size), dtype=img_array.dtype)
+    start_h, start_w = grid_size // 2 - h // 2, grid_size // 2 - w // 2
+    end_h, end_w = start_h + h, start_w + w
     padded_array[start_h:end_h, start_w:end_w] = img_array
     
     intensity_data = padded_array
-
-    # La amplitud es la raíz cuadrada de la intensidad. La fase se asume cero.
     amplitude_data = np.sqrt(intensity_data.astype(np.float64))
-
-    # Crear y configurar el objeto OpticalField
+    
+    # Filtramos el término DC restando el valor medio
+    amplitude_data = amplitude_data - np.mean(amplitude_data)
+    
     field_object = OpticalField(grid_size, pixel_pitch, wavelength)
     field_object.field = amplitude_data
     
-    print(f"Imagen incrustada en una rejilla de {grid_size}x{grid_size} (padding).")
+    print(f"Imagen incrustada y filtrada en una rejilla de {grid_size}x{grid_size}.")
     return field_object, intensity_data
 
-
-# FUNCIONES DE MÉTRICA DE ENFOQUE (SIN CAMBIOS)
-def calcular_varianza(image): return np.var(image)
-def calcular_laplaciano_abs(image): return np.sum(np.abs(laplace(image)))
+# =====================================================================================
+# FUNCIÓN DE MÉTRICA DE ENFOQUE (SOLO VARIANZA)
+# =====================================================================================
+def calcular_varianza(image): 
+    return np.var(image)
 
 # =====================================================================================
-# --- PASO 1: CONFIGURACIÓN Y CARGA USANDO LA NUEVA FUNCIÓN ---
+# PASO 1: CONFIGURACIÓN Y CARGA
 # =====================================================================================
 print("--- 1. Cargando imagen de difracción y configurando parámetros ---")
 
 # ----------------------------------------------------------------------
 # ----- ✍️ MODIFICA ESTOS PARÁMETROS ✍️ -----
 # ----------------------------------------------------------------------
-RUTA_A_TU_IMAGEN = "/home/mateusi/Desktop/Inst op 4/14mm cortada.tiff" # <--- ¡CAMBIA ESTO!
+RUTA_A_TU_IMAGEN = "14mm cortado.tiff" # <--- ¡CAMBIA ESTO!
 PIXEL_PITCH = 1.85e-6
 WAVELENGTH = 632.9e-9
-GRID_SIZE = 4096 # <--- AJUSTA ESTO (debe ser potencia de 2)
-Z_APROX_LAB = 14e-3 # <--- ¡CAMBIA ESTO! (en metros)
+GRID_SIZE = 4096 
+Z_APROX_LAB = 14e-3 
+
+# Parámetros para la búsqueda de foco
+rango_busqueda = 4e-3 # Rango en metros (ej. 4mm) para buscar alrededor de Z_APROX_LAB
+num_pasos = 50       # Número de distancias a probar
+z_min = Z_APROX_LAB - rango_busqueda / 2
+z_max = Z_APROX_LAB + rango_busqueda / 2
 # ----------------------------------------------------------------------
 
-# Usamos la nueva función para crear nuestro campo inicial
+# Usamos la función para crear nuestro campo inicial
 patron_difraccion_real, intensity_data = create_field_from_intensity_image(
     RUTA_A_TU_IMAGEN, GRID_SIZE, PIXEL_PITCH, WAVELENGTH
 )
 
-# Si la carga falló, el programa se detiene.
 if patron_difraccion_real is None:
-    sys.exit()
+    exit()
 
 # =====================================================================================
-# --- PASO 2 y 3: BÚSQUEDA DE FOCO Y ANÁLISIS (SIN CAMBIOS) ---
+# PASO 2: BÚSQUEDA DE FOCO USANDO VARIANZA
 # =====================================================================================
-
-# El resto del código es exactamente el mismo que en la versión anterior.
-# Define el rango de búsqueda
-z_min, z_max = Z_APROX_LAB * 0.8, Z_APROX_LAB * 1.2
-num_pasos = 100
 z_test_range = np.linspace(z_min, z_max, num_pasos)
+print(f"\n--- 2. Iniciando búsqueda entre {z_min*100:.2f} cm y {z_max*100:.2f} cm ---")
 
-# Bucle de retropropagación
-print(f"\n--- 2. Iniciando búsqueda entre {z_min*100:.1f} cm y {z_max*100:.1f} cm ---")
 metricas_varianza = []
-metricas_laplaciano = []
+
 start_time = time.time()
 for i, z_test in enumerate(z_test_range):
     campo_reconstruido = propagate_asm(patron_difraccion_real, -z_test)
     intensidad = np.abs(campo_reconstruido.field)**2
+    
     metricas_varianza.append(calcular_varianza(intensidad))
-    metricas_laplaciano.append(calcular_laplaciano_abs(intensidad))
+    
     print(f"Paso {i+1}/{num_pasos} | z = {-z_test*100:.2f} cm", end='\r')
 print(f"\nBúsqueda completada en {time.time() - start_time:.2f} segundos.")
 
-# Análisis de resultados
-print("\n--- 3. Analizando resultados ---")
-metricas_varianza = np.array(metricas_varianza) / np.max(metricas_varianza)
+# =====================================================================================
+# PASO 3: ANÁLISIS, GRÁFICO Y RECONSTRUCCIÓN FINAL
+# =====================================================================================
+print("\n--- 3. Analizando resultados y reconstrucción final ---")
+
+# Encontrar la distancia óptima para la varianza
 z_optima = z_test_range[np.argmax(metricas_varianza)]
-print(f"🎯 Distancia de enfoque óptima encontrada: {z_optima*100:.3f} cm")
+print(f"🎯 Distancia óptima encontrada (Varianza): {z_optima*100:.3f} cm")
 
-# Gráfico de métricas... (código de ploteo)
+# Graficar la curva de enfoque
 plt.figure(figsize=(10, 6))
-plt.plot(z_test_range * 100, metricas_varianza, label='Varianza')
-plt.axvline(x=z_optima * 100, color='g', linestyle=':', label=f'Z Óptima ({z_optima*100:.2f} cm)')
-plt.title('Curva de Métrica de Enfoque vs. Distancia')
-plt.xlabel('Distancia de Retropropagación (cm)'), plt.ylabel('Métrica Normalizada')
-plt.legend(), plt.grid(True), plt.show()
+plt.plot(z_test_range * 100, metricas_varianza, 'b-', label='Varianza')
+plt.axvline(x=z_optima * 100, color='r', linestyle=':', label=f'Pico en {z_optima*100:.2f} cm')
+plt.title('Métrica de Enfoque (Varianza) vs. Distancia')
+plt.xlabel('Distancia de Retropropagación (cm)')
+plt.ylabel('Varianza de la Intensidad')
+plt.legend()
+plt.grid(True)
+plt.show()
 
-# Reconstrucción final y visualización
+# Realizar la reconstrucción final en la distancia óptima con mayor padding para mejor calidad
+print("Generando reconstrucción final en la distancia óptima...")
 reconstruccion_final = propagate_asm(patron_difraccion_real, -z_optima, padding_factor=2)
+
+# Visualización final
 fig, axes = plt.subplots(1, 2, figsize=(14, 7))
-axes[0].imshow(intensity_data, cmap='gray'), axes[0].set_title('1. Tu Patrón de Difracción (Entrada)'), axes[0].axis('off')
-axes[1].imshow(np.abs(reconstruccion_final.field)**2, cmap='gray'), axes[1].set_title(f'2. Reconstrucción Enfocada (a {z_optima*100:.2f} cm)'), axes[1].axis('off')
-plt.tight_layout(), plt.show()
+axes[0].imshow(intensity_data, cmap='gray')
+axes[0].set_title('1. Patrón de Difracción (Entrada)')
+axes[0].axis('off')
+
+axes[1].imshow(np.abs(reconstruccion_final.field)**2, cmap='gray')
+axes[1].set_title(f'2. Reconstrucción Enfocada (a {z_optima*100:.2f} cm)')
+axes[1].axis('off')
+
+plt.tight_layout()
+plt.show()
