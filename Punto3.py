@@ -261,3 +261,8 @@ if __name__ == "__main__":
     campo_salida=propagate_fresnel_fft(campo_entrada, (0.1946))
     campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.1946))
 
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2446))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2446))
+
+    campo_salida=propagate_fresnel_fft(campo_entrada, (0.2946))
+    campo_salida.plot_intensity("Campo propagado una distancia z={} m".format(0.2946))
