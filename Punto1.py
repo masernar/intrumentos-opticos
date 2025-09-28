@@ -332,7 +332,7 @@ if __name__ == "__main__":
 # =========================================================================
 # --- Parámetros Fundamentales ---
     WAVELENGTH = 633E-9      # Longitud de onda (633 nm)
-    DISTANCE = 0.5           # Distancia de propagación z (0.5 m)
+    DISTANCE = 1.5           # Distancia de propagación z (0.5 m)
     APERTURE_RADIUS = 0.5e-3 # Radio de la apertura (0.5 mm)
     
     # --- Parámetros de la Malla de ENTRADA (Elegidos para ser VÁLIDOS) ---
@@ -349,7 +349,7 @@ if __name__ == "__main__":
     
     # --- Crear y Graficar el Campo de Entrada ---
     campo_entrada = OpticalField(GRID_SIZE, PIXEL_PITCH_IN, WAVELENGTH)
-    campo_entrada.add_aperture("circ", size=APERTURE_RADIUS * 2) # La función espera diámetro
+    cam po_entrada.add_aperture("circ", size=APERTURE_RADIUS * 2) # La función espera diámetro
     campo_entrada.plot_intensity("Campo de Entrada Válido")
     
     # --- Ejecutar la Propagación FFT ---
