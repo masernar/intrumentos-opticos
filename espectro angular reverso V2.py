@@ -1,11 +1,11 @@
-# Importar librer√≠as necesarias
+# Importar libreriaas necesarias
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import scipy.fft as fft # Usaremos scipy.fft para fft2 y ifft2 que son eficientes y manejan el shift
 
 
-#Crear campos √≥pticos de entrada
+#Crear campos oppticos de entrada
 class OpticalField:
     """
     Clase para crear y gestionar un campo √≥ptico complejo 2D.
@@ -183,151 +183,204 @@ def propagate_asm(input_field, z, padding_factor=2):
         OpticalField: Un nuevo objeto OpticalField con el campo propagado.
     """
 
-        # --- Paso 1: Extraer par√°metros y preparar el padding ---
+ # --- Paso 1: Extraer parámetros y preparar el padding ---
     U_in_original = input_field.field
     lambda_ = input_field.wavelength
-    dx_original = input_field.pixel_pitch
+    dx = input_field.pixel_pitch  # El tamaño de píxel es el mismo en toda la simulación
     N_original = input_field.size
-
-    # Nuevo tama√±o de la rejilla con padding
     N_padded = N_original * padding_factor
 
-    # El tama√±o del p√≠xel no cambia con el padding
-    dx_padded = dx_original
-
-    # Crear una nueva rejilla grande llena de ceros
+    # Crear una nueva rejilla grande e incrustar el campo original en el centro
     U_in_padded = np.zeros((N_padded, N_padded), dtype=np.complex128)
-
-    # Calcular las coordenadas para incrustar el campo original en el centro
     start = (N_padded - N_original) // 2
     end = start + N_original
     U_in_padded[start:end, start:end] = U_in_original
 
-    # --- El resto del algoritmo se ejecuta en la rejilla grande ---
+    # --- Paso 2: Propagación en el dominio de la frecuencia (sin shifts incorrectos) ---
+    # Calcular el espectro de frecuencias (f=0 está en la esquina)
+    A = fft.fft2(U_in_padded)
 
-    # Calcular el espectro de frecuencias espaciales del campo con padding
-    A_shifted = np.fft.fft2(U_in_padded)
-
-    # --- Construir la Funci√≥n de Transferencia (H) para la rejilla grande ---
-    freq_coords_1d = np.fft.fftfreq(N_padded, dx_padded)
+    # Construir la Función de Transferencia (H)
+    freq_coords_1d = fft.fftfreq(N_padded, dx)
     fx, fy = np.meshgrid(freq_coords_1d, freq_coords_1d)
 
     k = 2 * np.pi / lambda_
-    term_sqrt = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
-    mask = term_sqrt >= 0
+    
+    # El término dentro de la raíz cuadrada
+    # Se pone a cero si es negativo para evitar errores y manejar ondas evanescentes
+    term_sqrt_sq = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
+    term_sqrt = np.sqrt(np.maximum(term_sqrt_sq, 0))
 
-    H = np.zeros((N_padded, N_padded), dtype=np.complex128)
-    H[mask] = np.exp(1j * k * z * np.sqrt(term_sqrt[mask]))
+    H = np.exp(1j * k * z * term_sqrt)
+    
+    # Multiplicar en el dominio de la frecuencia
+    A_out = A * H
 
-    # --- Propagaci√≥n en el dominio de la frecuencia ---
-    A_out_shifted = A_shifted * H
+    # Volver al dominio espacial
+    U_out_padded = fft.ifft2(A_out)
 
-    # --- Des-centrar e IFFT ---
-    A_out = np.fft.ifftshift(A_out_shifted)
-    U_out_padded = np.fft.ifft2(A_out)
-
-    # --- Paso Final: Recortar la regi√≥n central ---
-    # Recortamos el resultado para que coincida con el tama√±o original de entrada.
+    # --- Paso 3: Recortar la región central ---
     U_out_original = U_out_padded[start:end, start:end]
 
-    # --- Devolver el resultado como un nuevo objeto OpticalField ---
-    output_field = OpticalField(size=N_original, pixel_pitch=dx_original, wavelength=lambda_)
+    # Devolver el resultado como un nuevo objeto OpticalField
+    output_field = OpticalField(size=N_original, pixel_pitch=dx, wavelength=lambda_)
     output_field.field = U_out_original
-
-    return output_field
-
-
-def propagate_asm_back(input_field, z, padding_factor=2):
-    """
-    Propaga un campo √≥ptico una distancia z usando el m√©todo del espectro angular.
-
-    Args:
-        input_field (OpticalField): El objeto OpticalField que contiene el campo de entrada.
-        z (float): La distancia de propagaci√≥n en metros.
-          padding_factor (int): Factor por el cual se aumenta el tama√±o de la rejilla
-                              internamente (ej. 2 significa duplicar las dimensiones).
-
-
-    Returns:
-        OpticalField: Un nuevo objeto OpticalField con el campo propagado.
-    """
-
-        # --- Paso 1: Extraer par√°metros y preparar el padding ---
-    U_in_original = input_field.field
-    lambda_ = input_field.wavelength
-    dx_original = input_field.pixel_pitch
-    N_original = input_field.size
-
-    # Nuevo tama√±o de la rejilla con padding
-    N_padded = N_original * padding_factor
-
-    # El tama√±o del p√≠xel no cambia con el padding
-    dx_padded = dx_original
-
-    # Crear una nueva rejilla grande llena de ceros
-    U_in_padded = np.zeros((N_padded, N_padded), dtype=np.complex128)
-
-    # Calcular las coordenadas para incrustar el campo original en el centro
-    start = (N_padded - N_original) // 2
-    end = start + N_original
-    U_in_padded[start:end, start:end] = U_in_original
-
-    # --- El resto del algoritmo se ejecuta en la rejilla grande ---
-
-    # Calcular el espectro de frecuencias espaciales del campo con padding
-    A_shifted = np.fft.fft2(U_in_padded)
-
-    # --- Construir la Funci√≥n de Transferencia (H) para la rejilla grande ---
-    freq_coords_1d = np.fft.fftfreq(N_padded, dx_padded)
-    fx, fy = np.meshgrid(freq_coords_1d, freq_coords_1d)
-
-    k = 2 * np.pi / lambda_
-    term_sqrt = 1 - (lambda_ * fx)**2 - (lambda_ * fy)**2
-    mask = term_sqrt >= 0
-
-    H = np.zeros((N_padded, N_padded), dtype=np.complex128)
-    H[mask] = np.exp(1j * k * z * np.sqrt(term_sqrt[mask]))
-
-    # --- Propagaci√≥n en el dominio de la frecuencia ---
-    A_out_shifted = A_shifted * H
-
-    # --- Des-centrar e IFFT ---
-    A_out = np.fft.ifftshift(A_out_shifted)
-    U_out_padded = np.fft.ifft2(A_out)
-
-    # --- Paso Final: Recortar la regi√≥n central ---
-    # Recortamos el resultado para que coincida con el tama√±o original de entrada.
-    U_out_original = U_out_padded[start:end, start:end]
-
-    # --- Devolver el resultado como un nuevo objeto OpticalField ---
-    output_field = OpticalField(size=N_original, pixel_pitch=dx_original, wavelength=lambda_)
-    output_field.field = U_out_original
-
     return output_field
 
 #______________________________________________________________________________________________________
 
 
-#Ejemplo plano √≥ptico de entrada
+# --- PARÁMETROS DE LA SIMULACIÓN CORREGIDOS ---
+# Usamos los parámetros de tu cámara DMM37UX226-ML
+PIXEL_PITCH = 1.85e-6  # 1.85 µm
+GRID_SIZE = 4096      # Potencia de 2, ligeramente mayor a la dimensión de la cámara
+WAVELENGTH = 632.9e-9   #láser HeNe
+D1 = 2e-3   # 2 mm
+D2 = 14e-3  # 14 mm
 
 
-# --- PAR√ÅMETROS DE LA SIMULACI√ìN ---
-PIXEL_PITCH = 1e-6
-GRID_SIZE = 4096    
-WAVELENGTH = 633E-9
+# ==============================================================================
+# PASO 1: CARGAR LAS IMÁGENES USANDO EL MÉTODO add_image
+# ==============================================================================
+print("Cargando imágenes de difracción en los campos ópticos...")
 
-limite=(GRID_SIZE*(PIXEL_PITCH*PIXEL_PITCH))/WAVELENGTH
+# Rutas a los archivos
+filepath_d1 = '2mm cortado.tiff'
+filepath_d2 = '14mm cortada.tiff'
 
-print("z <= ", limite*100, "cm")
+# Define el ancho físico que ocupará tu holograma en la rejilla.
+# Debería corresponder al tamaño del área del sensor que usaste.
+# Por ejemplo, si tu recorte fue de 3500 píxeles de ancho:
+ancho_fisico_holograma = 3500 * PIXEL_PITCH 
 
-# --- Crear el campo √≥ptico inicial ---
-campo_in = OpticalField(size=GRID_SIZE,pixel_pitch=PIXEL_PITCH,wavelength=WAVELENGTH)
-campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",1024)
+# Crear un campo óptico para el holograma en D1
+campo_d1_medido = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d1_medido.add_image(filepath_d1, target_width=ancho_fisico_holograma)
 
-# Visualizar el resultado
-campo_in.plot_intensity(title="Intensidad de la apertura")
+# Crear un campo óptico para el holograma en D2
+campo_d2_medido = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d2_medido.add_image(filepath_d2, target_width=ancho_fisico_holograma)
 
-A_prop=propagate_asm(campo_in,2e-3,2)
+# Extraemos la Amplitud de los campos y la normalizamos
+# np.abs() funciona sobre el campo complejo para darnos la amplitud
+Amp_d1 = np.abs(campo_d1_medido.field)
+Amp_d2 = np.abs(campo_d2_medido.field)
 
-A_prop.plot_intensity(title="intesidad campo proapagado")
+if np.max(Amp_d1) > 0 and np.max(Amp_d2) > 0:
+    Amp_d1 /= np.max(Amp_d1)
+    Amp_d2 /= np.max(Amp_d2)
+    print("Imágenes cargadas y normalizadas correctamente.")
+else:
+    print("Error: Una de las imágenes parece estar completamente negra después de cargarla.")
+
+# Opcional: Visualiza los hologramas cargados para verificar que todo está bien
+campo_d1_medido.plot_intensity("Holograma Medido en D1 (2mm)")
+campo_d2_medido.plot_intensity("Holograma Medido en D2 (14mm)")
+
+# ==============================================================================
+# PASO 2: FUNCIÓN PARA CREAR LA FASE ESFÉRICA
+# ==============================================================================
+
+def crear_fase_esferica(campo_optico, z_fuente):
+    """
+    Genera una máscara de fase correspondiente a una onda esférica.
+
+    Args:
+        campo_optico (OpticalField): El campo para el cual se genera la fase.
+                                     Se usa para obtener las coordenadas y la longitud de onda.
+        z_fuente (float): Distancia de la fuente puntual al plano. Es el radio de curvatura.
+
+    Returns:
+        np.ndarray: Un array 2D complejo con la máscara de fase.
+    """
+    k = 2 * np.pi / campo_optico.wavelength
+    x = campo_optico.x_coords
+    y = campo_optico.y_coords
+
+    # Usamos la aproximación paraxial (Fórmula de Fresnel) que es muy precisa para estas distancias
+    # Fase = exp(j * k * (x^2 + y^2) / (2 * z))
+    termino_fase = (k * (x**2 + y**2)) / (2 * z_fuente)
+    
+    return np.exp(1j * termino_fase)
+
+# ==============================================================================
+# PASO 3: BÚSQUEDA Y OPTIMIZACIÓN DEL PARÁMETRO DE FASE (z_fuente)
+# ==============================================================================
+print("\nIniciando proceso de optimización para encontrar z_fuente...")
+
+# Creamos un rango de distancias de fuente para probar.
+# Este rango es una suposición inicial. Si el mínimo está en un extremo,
+# deberás ampliar el rango. Empecemos con algo razonable.
+z_fuentes_a_probar = np.linspace(1e-3, 30e-3, 100) # Probar de 1mm a 30mm en 100 pasos
+errores = []
+
+# Distancia de retro-propagación (de D2 a D1)
+distancia_propagacion = D1 - D2 # Será -0.012 m
+
+# El campo objetivo contra el que compararemos
+intensidad_objetivo_d1 = Amp_d1**2
+
+for zf in z_fuentes_a_probar:
+    # 1. Crear el campo inicial en D2. Amplitud medida, fase plana.
+    campo_d2 = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+    campo_d2.field = Amp_d2.astype(np.complex128)
+
+    # 2. Crear y aplicar la fase esférica de prueba
+    fase_prueba = crear_fase_esferica(campo_d2, zf)
+    campo_d2.field *= fase_prueba
+    
+    # 3. Retro-propagar de D2 a D1
+    campo_propagado_a_d1 = propagate_asm(campo_d2, distancia_propagacion)
+
+    # 4. Calcular la intensidad y el error
+    intensidad_calculada_d1 = np.abs(campo_propagado_a_d1.field)**2
+    intensidad_calculada_d1 /= np.max(intensidad_calculada_d1) # Normalizar para comparar
+
+    error = np.mean((intensidad_objetivo_d1 - intensidad_calculada_d1)**2)
+    errores.append(error)
+    print(f"Probando z_fuente = {zf*1000:.2f} mm -> Error MSE = {error:.6f}")
+
+# Encontrar el mejor z_fuente
+min_error_idx = np.argmin(errores)
+z_fuente_optimo = z_fuentes_a_probar[min_error_idx]
+
+print(f"\n¡Optimización completada!")
+print(f"El valor óptimo para z_fuente es: {z_fuente_optimo * 1000:.3f} mm")
+
+# Visualizar la curva de error
+plt.figure()
+plt.plot(z_fuentes_a_probar * 1000, errores)
+plt.xlabel("Distancia de la fuente, z_fuente (mm)")
+plt.ylabel("Error Cuadrático Medio (MSE)")
+plt.title("Error de reconstrucción vs. z_fuente")
+plt.grid(True)
+plt.show()
+
+# ==============================================================================
+# PASO 4: RECONSTRUCCIÓN FINAL CON LA FASE ÓPTIMA
+# ==============================================================================
+print("\nRealizando la reconstrucción final con la fase óptima...")
+
+# 1. Crear el campo en D1 con la amplitud medida
+campo_d1_final = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+campo_d1_final.field = Amp_d1.astype(np.complex128)
+
+# 2. Generar la fase esférica óptima
+fase_optima = crear_fase_esferica(campo_d1_final, z_fuente_optimo)
+
+# 3. Aplicar la corrección de fase
+campo_d1_final.field *= fase_optima
+
+# 4. Retro-propagar desde D1 hasta el plano del objeto (z=0)
+distancia_reconstruccion = -D1
+campo_reconstruido = propagate_asm(campo_d1_final, distancia_reconstruccion)
+
+# 5. Visualizar la imagen reconstruida (la intensidad)
+campo_reconstruido.plot_intensity(title=f"Imagen Reconstruida (z_fuente = {z_fuente_optimo*1000:.2f} mm)")
+
+# También es útil ver la fase de la imagen reconstruida.
+# Si el objeto es de solo amplitud, la fase debería ser casi plana.
+campo_reconstruido.plot_phase(title=f"Fase de la Imagen Reconstruida")
+
+
 
