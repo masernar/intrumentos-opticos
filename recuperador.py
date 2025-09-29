@@ -119,15 +119,15 @@ print("--- 1. Cargando imagen de difracción y configurando parámetros ---")
 # ----------------------------------------------------------------------
 # -----  MODIFICA ESTOS PARÁMETROS  -----
 # ----------------------------------------------------------------------
-RUTA_A_TU_IMAGEN = "14mm cortado.tiff" # <--- ¡CAMBIA ESTO!
+RUTA_A_TU_IMAGEN = "14mm cortado.tiff" 
 PIXEL_PITCH = 1.85e-6
 WAVELENGTH = 632.9e-9
 GRID_SIZE = 4096
-Z_APROX_LAB = 14e-3
+Z_APROX_LAB = 14.2e-3
 
 # Parámetros para la búsqueda de foco
-rango_busqueda = 4e-3 # Rango en metros (ej. 4mm) para buscar alrededor de Z_APROX_LAB
-num_pasos = 20     # Número de distancias a probar
+rango_busqueda = 0e-3 # Rango en metros (ej. 4mm) para buscar alrededor de Z_APROX_LAB
+num_pasos = 1     # Número de distancias a probar
 z_min = Z_APROX_LAB - rango_busqueda / 2
 z_max = Z_APROX_LAB + rango_busqueda / 2
 # ----------------------------------------------------------------------
@@ -200,6 +200,7 @@ axes[1].axis('off')
 plt.tight_layout()
 plt.show()
 
+
 # Ahora, creamos y aplicamos la máscara de fase a este campo ya enfocado.
 k = 2 * np.pi / WAVELENGTH
 r_sq = campo_enfocado.x_coords**2 + campo_enfocado.y_coords**2
@@ -214,22 +215,22 @@ print(f"Corrección de fase aplicada para una fuente a {R_FUENTE*100:.1f} cm.")
 # -------------------------------------------------------------------------------------
 
 # 3.3: Crear UNA SOLA figura con TRES subplots para la comparación final
-fig, axes = plt.subplots(1, 3, figsize=(21, 7))
-
+fig, axes = plt.subplots(1,2, figsize=(14, 7))
+'''
 # Subplot 1: Imagen de entrada
 axes[0].imshow(intensity_data, cmap='gray')
 axes[0].set_title('1. Patrón de Difracción (Entrada)')
 axes[0].axis('off')
-
+'''
 # Subplot 2: Reconstrucción SIN corrección de fase
-axes[1].imshow(np.abs(campo_enfocado.field)**2, cmap='gray')
-axes[1].set_title(f'2. Reconstrucción SIN Corregir\n(z={z_optima*100:.2f} cm)')
-axes[1].axis('off')
+axes[0].imshow(np.abs(campo_enfocado.field)**2, cmap='gray')
+axes[0].set_title(f'2. Reconstrucción sin correción de fase\n(z={z_optima*100:.2f} cm)')
+axes[0].axis('off')
 
 # Subplot 3: Reconstrucción CON corrección de fase
-axes[2].imshow(np.abs(campo_final_corregido.field)**2, cmap='gray')
-axes[2].set_title(f'3. Reconstrucción CORREGIDA\n(R={R_FUENTE*100:.1f} cm)')
-axes[2].axis('off')
+axes[1].imshow(np.abs(campo_final_corregido.field)**2, cmap='gray')
+axes[1].set_title(f'3. Reconstrucción corregida\n(z={z_optima*100:.2f} cm, R={R_FUENTE*100:.1f} cm)')
+axes[1].axis('off')
 
 plt.tight_layout()
 plt.show()
