@@ -109,7 +109,7 @@ if __name__ == "__main__":
         # 2. Propagar el campo hacia adelante (distancia Z positiva)
         print(f"\n--- Propagando el campo a una distancia de {Z_DISTANCIA_SIMULADA*1000:.1f} mm ---")
         start_time = time.time()
-        holograma_field = propagate_asm(objeto_field, Z_DISTANCIA_SIMULADA, padding_factor=1)
+        holograma_field = propagate_asm(objeto_field, Z_DISTANCIA_SIMULADA, padding_factor=3)
         print(f"Propagación completada en {time.time() - start_time:.2f} segundos.")
 
         # 3. Calcular la intensidad (lo que capturaría el sensor de la cámara)

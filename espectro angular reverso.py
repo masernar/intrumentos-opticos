@@ -312,7 +312,7 @@ def propagate_asm_back(input_field, z, padding_factor=2):
 
 
 # --- PARÁMETROS DE LA SIMULACIÓN ---
-PIXEL_PITCH = 1e-6
+PIXEL_PITCH = 1.85e-6
 GRID_SIZE = 4096    
 WAVELENGTH = 633E-9
 
@@ -322,7 +322,7 @@ print("z <= ", limite*100, "cm")
 
 # --- Crear el campo óptico inicial ---
 campo_in = OpticalField(size=GRID_SIZE,pixel_pitch=PIXEL_PITCH,wavelength=WAVELENGTH)
-campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",1024)
+campo_in.add_image("/home/mateusi/Desktop/Inst op 4/2mm cortado.tiff",3000*PIXEL_PITCH)
 
 # Visualizar el resultado
 campo_in.plot_intensity(title="Intensidad de la apertura")
