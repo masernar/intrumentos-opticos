@@ -183,7 +183,6 @@ def propagate_FT(input_field_obj):
     
     return output_field_obj
 
-
 # --- PROGRAMAS PRINCIPALES ---
 if __name__ == "__main__":
     
@@ -199,35 +198,70 @@ if __name__ == "__main__":
     campo_S = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
 
     try:
-        # Usa una imagen de prueba clásica (Cameraman) o una foto tuya.
-        # Es mejor si es en blanco y negro y cuadrada.
-        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png' # O 'ruta/a/mi/foto.png'
-        
-        # 'target_width' es el tamaño físico real de la imagen en el plano S.
-        # (ej. 2 mm de ancho)
+        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png'
         campo_S.add_image(ruta_imagen, target_width=2e-3)
-        
     except FileNotFoundError:
         print("ADVERTENCIA: No se encontró la imagen de prueba. Usando un círculo simple.")
-        campo_S.add_aperture('circ', size=1e-3) # Plan B
+        campo_S.add_aperture('circ', size=1e-3, value=1.0)
         
     campo_S.plot_intensity(title="Objeto de Entrada (S)")
 
 
     
-    # === PROGRAMA 1: Simulación Rama Superior (S -> O) ===
-    def run_simulation_branch_2(input_field,):
-        print("\n--- Ejecutando Rama inferior")
+    # === PROGRAMA 2: Simulación Rama Inferior (S -> U) ===
+    def run_simulation_branch_2(input_field, f):
+        print("\n--- Ejecutando Rama inferior ---")
         
-        # 1. Viaje S -> M1 (Plano Fourier)
+        # 1. Viaje S -> U (Plano Fourier)
         print("Calculando S -> U")
-        campo_M1 = propagate_FT(input_field)
+        campo_U = propagate_FT(input_field)
         
-        # log_scale=True es ESENCIAL para ver el espectro de una imagen real
-        campo_M1.plot_intensity(title="Imagen final en Cam2(U)", log_scale=True)
-  
-    # Ejecutar la simulación de la Rama 1
-    run_simulation_branch_2(campo_S)
+        # 2. Obtener la intensidad para graficar
+        intensity = campo_U.get_intensity()
+        
+        # --- 3. CALCULAR LA ESCALA FÍSICA CORRECTA ---
+        
+        # Parámetros del plano de entrada (S)
+        dx = input_field.pixel_pitch  # ej. 5e-6 m
+        N = input_field.size          # ej. 1024
+        
+        # Ancho total de la rejilla de entrada
+        L_in = N * dx               
+        
+        # El "pixel pitch" en el espacio de FRECUENCIA (fx) es:
+        dfx = 1 / L_in
+        
+        # El ancho total del espacio de FRECUENCIA (fx) es:
+        L_fx = N * dfx # = 1 / dx
+        
+        # Creamos el vector de coordenadas de frecuencia (fx)
+        f_coords = np.linspace(-L_fx/2, L_fx/2, N, endpoint=False)
+        
+        # Convertimos las coordenadas de frecuencia (fx) a
+        # coordenadas FÍSICAS en la cámara (xf)
+        # usando la fórmula: xf = lambda * f * fx
+        xf_coords = f_coords * input_field.wavelength * f
+        
+        # El 'extent' para el plot es [min(x), max(x), min(y), max(y)]
+        plot_extent = [xf_coords.min(), xf_coords.max(), 
+                       xf_coords.min(), xf_coords.max()]
+        
+        # --- 4. GRAFICAR MANUALMENTE CON LA ESCALA CORRECTA ---
+        plt.figure(figsize=(8, 8))
+        
+        data_to_plot = np.log10(intensity + 1e-10)
+        label = "Log(Intensidad) (unidades arbitrarias)"
 
-    
+        plt.imshow(data_to_plot, cmap='gray', extent=plot_extent)
+        
+        plt.title("Imagen final en Cam2 (U) - Escala Física Correcta")
+        plt.xlabel("Posición X en el plano de Fourier (m)")
+        plt.ylabel("Posición Y en el plano de Fourier (m)")
+        plt.colorbar(label=label)
+        plt.show()
+
+ 
+    # Ejecutar la simulación de la Rama 2
+    # Pasamos FOCAL_LENGTH_f como argumento
+    run_simulation_branch_2(campo_S, FOCAL_LENGTH_f)
 
