@@ -58,6 +58,70 @@ class OpticalField:
         
         else:
             raise ValueError(f"Forma '{shape}' no reconocida.")
+            
+    def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
+        """
+        Carga una imagen desde un archivo y la añade al campo como una máscara de amplitud.
+        (Este es tu código original, ¡funciona perfecto!)
+        """
+        try:
+            img = Image.open(filepath).convert('L') # Convertir a escala de grises
+        except FileNotFoundError:
+            print(f"Error: No se encontró el archivo en la ruta: {filepath}")
+            return
+
+        img_array = np.array(img) / 255.0
+
+        original_width_px, original_height_px = img.size
+        aspect_ratio = original_height_px / original_width_px
+
+        target_width_px = int(target_width / self.pixel_pitch)
+        target_height_px = int(target_width_px * aspect_ratio)
+        
+        if target_width_px == 0 or target_height_px == 0:
+            print(f"Error: target_width ({target_width} m) es demasiado pequeño para el pixel_pitch ({self.pixel_pitch} m).")
+            return
+
+        img_to_resize = Image.fromarray((img_array * 255).astype(np.uint8))
+        resized_img = img_to_resize.resize((target_width_px, target_height_px), Image.Resampling.LANCZOS)
+        resized_array = np.array(resized_img) / 255.0
+
+        center_x_px_offset = int(center[0] / self.pixel_pitch)
+        center_y_px_offset = int(center[1] / self.pixel_pitch)
+
+        paste_center_x = self.size // 2 + center_x_px_offset
+        paste_center_y = self.size // 2 + center_y_px_offset
+
+        start_x = paste_center_x - target_width_px // 2
+        start_y = paste_center_y - target_height_px // 2
+        end_x = start_x + target_width_px
+        end_y = start_y + target_height_px
+
+        # --- Recorte de seguridad (Clipping) ---
+        # Si la imagen se sale, la recortamos para que quepa
+        
+        # 1. Calcular cuánto se sale
+        clip_start_x = max(0, -start_x)
+        clip_start_y = max(0, -start_y)
+        clip_end_x = max(0, end_x - self.size)
+        clip_end_y = max(0, end_y - self.size)
+        
+        # 2. Ajustar los arrays
+        # (Si no hay recorte, clip_start_x=0 y clip_end_x=0, así que no se hace nada)
+        img_slice = resized_array[clip_start_y : target_height_px - clip_end_y,
+                                  clip_start_x : target_width_px - clip_end_x]
+        
+        field_start_x = max(0, start_x)
+        field_start_y = max(0, start_y)
+        field_end_x = min(self.size, end_x)
+        field_end_y = min(self.size, end_y)
+
+        # 3. Pegar la imagen (asegurándonos de que las formas coincidan)
+        if img_slice.shape == self.field[field_start_y:field_end_y, field_start_x:field_end_x].shape:
+             self.field[field_start_y:field_end_y, field_start_x:field_end_x] += \
+                img_slice.astype(np.complex128) * value
+        else:
+            print("Advertencia: No se pudo pegar la imagen por un desajuste de formas (probablemente 1 píxel).")
 
     def apply_transmittance(self, mask_object):
         """
@@ -168,40 +232,49 @@ if __name__ == "__main__":
     print("Creando objeto de entrada...")
     campo_S = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
     
-    # Usaremos una rejilla Ronchi como objeto de prueba
-    periodo_rejilla = 100e-6 # 100 µm
-    ancho_rejilla = 1e-3     # 1 mm
-    campo_S.add_aperture('ronchi', size=periodo_rejilla)
-    
-    # Lo enmascaramos con un círculo para que no sea infinito
-    mascara_objeto = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    mascara_objeto.add_aperture('circ', size=ancho_rejilla)
-    
-    campo_S.apply_transmittance(mascara_objeto)
-    
+    # --- ESTA ES LA NUEVA PARTE ---
+    # En lugar de la rejilla Ronchi, cargamos una imagen.
+    # ¡Asegúrate de que la ruta al archivo sea correcta!
+    try:
+        # Usa una imagen de prueba clásica (Cameraman) o una foto tuya.
+        # Es mejor si es en blanco y negro y cuadrada.
+        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png' # O 'ruta/a/mi/foto.png'
+        
+        # 'target_width' es el tamaño físico real de la imagen en el plano S.
+        # (ej. 2 mm de ancho)
+        campo_S.add_image(ruta_imagen, target_width=2e-3)
+        
+    except FileNotFoundError:
+        print(f"ADVERTENCIA: No se encontró la imagen de prueba. Usando un círculo simple.")
+        campo_S.add_aperture('circ', size=1e-3) # Plan B
+        
     campo_S.plot_intensity(title="Objeto de Entrada (S)")
+    # --- FIN DE LA NUEVA PARTE ---
 
     
     # --- 2. Definir los Filtros (M1) ---
     print("Creando filtros...")
     
+    # El tamaño de tus filtros ahora dependerá de la imagen.
+    # ¡Tendrás que experimentar con estos valores!
+    
     # Filtro Unidad (sin filtro)
     filtro_unidad = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    filtro_unidad.field.fill(1.0 + 0j) # Un "1" en todos lados
+    filtro_unidad.field.fill(1.0 + 0j)
     
     # Filtro Pasa-Bajas (LPF)
     filtro_LPF = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    filtro_LPF.add_aperture('circ', size=200e-6) # Apertura de 200 µm
+    # Un radio pequeño para un desenfoque fuerte
+    filtro_LPF.add_aperture('circ', size=50e-6) # 50 µm de radio
     
     # Filtro Pasa-Altas (HPF)
     filtro_HPF = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    filtro_HPF.field.fill(1.0 + 0j) # Empieza pasando todo
-    # Ahora, crea la "parada de haz"
-    radio_parada_haz = 100e-6
+    filtro_HPF.field.fill(1.0 + 0j) 
+    radio_parada_haz = 25e-6 # Bloquear solo el centro
     stop_mask = (filtro_HPF.x_coords**2 + filtro_HPF.y_coords**2) < radio_parada_haz**2
-    filtro_HPF.field[stop_mask] = 0 # Pone un "0" en el centro
+    filtro_HPF.field[stop_mask] = 0
     
-
+    
     # === PROGRAMA 1: Simulación Rama Superior (S -> O) ===
     def run_simulation_branch_1(input_field, filter_object, filter_name):
         print(f"\n--- Ejecutando Rama Superior con Filtro: {filter_name} ---")
@@ -209,41 +282,31 @@ if __name__ == "__main__":
         # 1. Viaje S -> M1 (Plano Fourier)
         print("Calculando S -> M1 (FFT 1)...")
         campo_M1 = propagate_FT(input_field)
+        # log_scale=True es ESENCIAL para ver el espectro de una imagen real
         campo_M1.plot_intensity(title=f"Plano M1 (Espectro) - {filter_name}", log_scale=True)
         
-        # 2. Aplicar Filtro en M1
+        # ... (El resto de la función es igual) ...
         print("Aplicando filtro...")
         campo_M1_filtrado = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-        campo_M1_filtrado.field = campo_M1.field # Copiamos el campo
+        campo_M1_filtrado.field = campo_M1.field
         campo_M1_filtrado.apply_transmittance(filter_object)
         
-        # 3. Viaje M1 -> O (Plano Imagen)
         print("Calculando M1 -> O (FFT 2)...")
         campo_O = propagate_FT(campo_M1_filtrado)
         
-        # 4. Mostrar resultado final
         campo_O.plot_intensity(title=f"Imagen Final en Cam1 (O) - {filter_name}")
 
-    # Ejecutar la simulación de la Rama 1 con y sin filtros
+    # Ejecutar la simulación de la Rama 1
     run_simulation_branch_1(campo_S, filtro_unidad, "Sin Filtro")
     run_simulation_branch_1(campo_S, filtro_LPF, "Pasa-Bajas (LPF)")
     run_simulation_branch_1(campo_S, filtro_HPF, "Pasa-Altas (HPF)")
     
 
     # === PROGRAMA 2: Simulación Rama Inferior (S -> U) ===
+    # (Esta función no cambia, pero la ejecutaré para completar)
     def run_simulation_branch_2(input_field, f, delta):
         print(f"\n--- Ejecutando Rama Inferior con delta = {delta*1000:.2f} mm ---")
-        
-        # 1. Propagar S -> U (Modelo Chirp-FFT)
         campo_U = propagate_chirped_FT(input_field, f, delta)
-        
-        # 2. Mostrar resultado (la intensidad es invariante a delta)
-        #    Usamos log_scale=True para ver el espectro
         campo_U.plot_intensity(title=f"Imagen en Cam2 (U) - delta = {delta*1000:.2f} mm", log_scale=True)
-        
-        # 3. (Opcional) Mostrar la fase para ver el efecto de delta
-        campo_U.plot_phase(title=f"FASE en Cam2 (U) - delta = {delta*1000:.2f} mm")
 
-    # Ejecutar la simulación de la Rama 2
     run_simulation_branch_2(campo_S, FOCAL_LENGTH_f, delta=0.0)
-    run_simulation_branch_2(campo_S, FOCAL_LENGTH_f, delta=5e-3) # 5mm de desenfoque
