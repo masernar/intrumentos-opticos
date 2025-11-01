@@ -33,7 +33,6 @@ class OpticalField:
     def add_aperture(self, shape, center=(0, 0), size=None, value=1.0 + 0j):
         """
         Añade una apertura (o valor) a la rejilla.
-        (Basado en tu código original)
         """
         if size is None:
             raise ValueError("El tamaño (size) debe ser especificado.")
@@ -62,7 +61,6 @@ class OpticalField:
     def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
         """
         Carga una imagen desde un archivo y la añade al campo como una máscara de amplitud.
-        (Este es tu código original, ¡funciona perfecto!)
         """
         try:
             img = Image.open(filepath).convert('L') # Convertir a escala de grises
@@ -185,37 +183,6 @@ def propagate_FT(input_field_obj):
     
     return output_field_obj
 
-def propagate_chirped_FT(input_field_obj, f, delta):
-    """
-    Aplica el modelo de la "casi-FT" (Ec. 8) para la Rama Inferior.
-    Devuelve un NUEVO objeto OpticalField.
-    """
-    # 1. Parámetros
-    d_o = f + delta
-    
-    # 2. Fase Interna (chirp)
-    fase_interna_data = np.exp(1j * input_field_obj.k / (2 * d_o) * \
-                             (input_field_obj.x_coords**2 + input_field_obj.y_coords**2))
-    
-    # 3. Campo de entrada "chirpeado"
-    U_in_chirped = input_field_obj.field * fase_interna_data
-    
-    # 4. Aplicar la FFT (centrada)
-    U_out_data = fft.fftshift(fft.fft2(fft.ifftshift(U_in_chirped)))
-    
-    # 5. Fase Externa (chirp)
-    fase_externa_data = np.exp(-1j * input_field_obj.k * delta / (2 * f**2) * \
-                             (input_field_obj.x_coords**2 + input_field_obj.y_coords**2))
-
-    # 6. Crear el nuevo objeto de campo de salida
-    output_field_obj = OpticalField(input_field_obj.size,
-                                    input_field_obj.pixel_pitch,
-                                    input_field_obj.wavelength)
-    
-    # 7. Asignar el campo final (con fase externa)
-    output_field_obj.field = U_out_data * fase_externa_data
-    
-    return output_field_obj
 
 
 # --- PROGRAMAS PRINCIPALES ---
@@ -232,20 +199,16 @@ if __name__ == "__main__":
     print("Creando objeto de entrada...")
     campo_S = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
     
-    # --- ESTA ES LA NUEVA PARTE ---
-    # En lugar de la rejilla Ronchi, cargamos una imagen.
-    # ¡Asegúrate de que la ruta al archivo sea correcta!
     try:
-        # Usa una imagen de prueba clásica (Cameraman) o una foto tuya.
-        # Es mejor si es en blanco y negro y cuadrada.
-        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png' # O 'ruta/a/mi/foto.png'
+
+        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png' 
         
         # 'target_width' es el tamaño físico real de la imagen en el plano S.
         # (ej. 2 mm de ancho)
         campo_S.add_image(ruta_imagen, target_width=2e-3)
         
     except FileNotFoundError:
-        print(f"ADVERTENCIA: No se encontró la imagen de prueba. Usando un círculo simple.")
+        print("ADVERTENCIA: No se encontró la imagen de prueba. Usando un círculo simple.")
         campo_S.add_aperture('circ', size=1e-3) # Plan B
         
     campo_S.plot_intensity(title="Objeto de Entrada (S)")
@@ -255,17 +218,15 @@ if __name__ == "__main__":
     # --- 2. Definir los Filtros (M1) ---
     print("Creando filtros...")
     
-    # El tamaño de tus filtros ahora dependerá de la imagen.
-    # ¡Tendrás que experimentar con estos valores!
-    
+
     # Filtro Unidad (sin filtro)
     filtro_unidad = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
     filtro_unidad.field.fill(1.0 + 0j)
     
     # Filtro Pasa-Bajas (LPF)
     filtro_LPF = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
-    # Un radio pequeño para un desenfoque fuerte
-    filtro_LPF.add_aperture('circ', size=50e-6) # 50 µm de radio
+
+    filtro_LPF.add_aperture('circ', size=300e-6)
     
     # Filtro Pasa-Altas (HPF)
     filtro_HPF = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
@@ -282,10 +243,8 @@ if __name__ == "__main__":
         # 1. Viaje S -> M1 (Plano Fourier)
         print("Calculando S -> M1 (FFT 1)...")
         campo_M1 = propagate_FT(input_field)
-        # log_scale=True es ESENCIAL para ver el espectro de una imagen real
-        campo_M1.plot_intensity(title=f"Plano M1 (Espectro) - {filter_name}", log_scale=True)
+
         
-        # ... (El resto de la función es igual) ...
         print("Aplicando filtro...")
         campo_M1_filtrado = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
         campo_M1_filtrado.field = campo_M1.field
@@ -301,12 +260,3 @@ if __name__ == "__main__":
     run_simulation_branch_1(campo_S, filtro_LPF, "Pasa-Bajas (LPF)")
     run_simulation_branch_1(campo_S, filtro_HPF, "Pasa-Altas (HPF)")
     
-
-    # === PROGRAMA 2: Simulación Rama Inferior (S -> U) ===
-    # (Esta función no cambia, pero la ejecutaré para completar)
-    def run_simulation_branch_2(input_field, f, delta):
-        print(f"\n--- Ejecutando Rama Inferior con delta = {delta*1000:.2f} mm ---")
-        campo_U = propagate_chirped_FT(input_field, f, delta)
-        campo_U.plot_intensity(title=f"Imagen en Cam2 (U) - delta = {delta*1000:.2f} mm", log_scale=True)
-
-    run_simulation_branch_2(campo_S, FOCAL_LENGTH_f, delta=0.0)

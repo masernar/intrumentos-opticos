@@ -33,7 +33,6 @@ class OpticalField:
     def add_aperture(self, shape, center=(0, 0), size=None, value=1.0 + 0j):
         """
         Añade una apertura (o valor) a la rejilla.
-        (Basado en tu código original)
         """
         if size is None:
             raise ValueError("El tamaño (size) debe ser especificado.")
@@ -58,6 +57,69 @@ class OpticalField:
         
         else:
             raise ValueError(f"Forma '{shape}' no reconocida.")
+            
+    def add_image(self, filepath, target_width, center=(0, 0), value=1.0 + 0j):
+        """
+        Carga una imagen desde un archivo y la añade al campo como una máscara de amplitud.
+        """
+        try:
+            img = Image.open(filepath).convert('L') # Convertir a escala de grises
+        except FileNotFoundError:
+            print(f"Error: No se encontró el archivo en la ruta: {filepath}")
+            return
+
+        img_array = np.array(img) / 255.0
+
+        original_width_px, original_height_px = img.size
+        aspect_ratio = original_height_px / original_width_px
+
+        target_width_px = int(target_width / self.pixel_pitch)
+        target_height_px = int(target_width_px * aspect_ratio)
+        
+        if target_width_px == 0 or target_height_px == 0:
+            print(f"Error: target_width ({target_width} m) es demasiado pequeño para el pixel_pitch ({self.pixel_pitch} m).")
+            return
+
+        img_to_resize = Image.fromarray((img_array * 255).astype(np.uint8))
+        resized_img = img_to_resize.resize((target_width_px, target_height_px), Image.Resampling.LANCZOS)
+        resized_array = np.array(resized_img) / 255.0
+
+        center_x_px_offset = int(center[0] / self.pixel_pitch)
+        center_y_px_offset = int(center[1] / self.pixel_pitch)
+
+        paste_center_x = self.size // 2 + center_x_px_offset
+        paste_center_y = self.size // 2 + center_y_px_offset
+
+        start_x = paste_center_x - target_width_px // 2
+        start_y = paste_center_y - target_height_px // 2
+        end_x = start_x + target_width_px
+        end_y = start_y + target_height_px
+
+        # --- Recorte de seguridad (Clipping) ---
+        # Si la imagen se sale, la recortamos para que quepa
+        
+        # 1. Calcular cuánto se sale
+        clip_start_x = max(0, -start_x)
+        clip_start_y = max(0, -start_y)
+        clip_end_x = max(0, end_x - self.size)
+        clip_end_y = max(0, end_y - self.size)
+        
+        # 2. Ajustar los arrays
+        # (Si no hay recorte, clip_start_x=0 y clip_end_x=0, así que no se hace nada)
+        img_slice = resized_array[clip_start_y : target_height_px - clip_end_y,
+                                  clip_start_x : target_width_px - clip_end_x]
+        
+        field_start_x = max(0, start_x)
+        field_start_y = max(0, start_y)
+        field_end_x = min(self.size, end_x)
+        field_end_y = min(self.size, end_y)
+
+        # 3. Pegar la imagen (asegurándonos de que las formas coincidan)
+        if img_slice.shape == self.field[field_start_y:field_end_y, field_start_x:field_end_x].shape:
+             self.field[field_start_y:field_end_y, field_start_x:field_end_x] += \
+                img_slice.astype(np.complex128) * value
+        else:
+            print("Advertencia: No se pudo pegar la imagen por un desajuste de formas (probablemente 1 píxel).")
 
     def apply_transmittance(self, mask_object):
         """
@@ -121,34 +183,50 @@ def propagate_FT(input_field_obj):
     
     return output_field_obj
 
-def propagate_chirped_FT(input_field_obj, f, delta):
-    """
-    Aplica el modelo de la "casi-FT" (Ec. 8) para la Rama Inferior.
-    Devuelve un NUEVO objeto OpticalField.
-    """
-    # 1. Parámetros
-    d_o = f + delta
-    
-    # 2. Fase Interna (chirp)
-    fase_interna_data = np.exp(1j * input_field_obj.k / (2 * d_o) * \
-                             (input_field_obj.x_coords**2 + input_field_obj.y_coords**2))
-    
-    # 3. Campo de entrada "chirpeado"
-    U_in_chirped = input_field_obj.field * fase_interna_data
-    
-    # 4. Aplicar la FFT (centrada)
-    U_out_data = fft.fftshift(fft.fft2(fft.ifftshift(U_in_chirped)))
-    
-    # 5. Fase Externa (chirp)
-    fase_externa_data = np.exp(-1j * input_field_obj.k * delta / (2 * f**2) * \
-                             (input_field_obj.x_coords**2 + input_field_obj.y_coords**2))
 
-    # 6. Crear el nuevo objeto de campo de salida
-    output_field_obj = OpticalField(input_field_obj.size,
-                                    input_field_obj.pixel_pitch,
-                                    input_field_obj.wavelength)
+# --- PROGRAMAS PRINCIPALES ---
+if __name__ == "__main__":
     
-    # 7. Asignar el campo final (con fase externa)
-    output_field_obj.field = U_out_data * fase_externa_data
+    # --- Parámetros Globales de Simulación ---
+    WAVELENGTH = 633e-9   # 633 nm
+    PIXEL_PITCH = 5e-6    # 5 µm
+    GRID_SIZE = 1024      # 1024x1024 píxeles
+    FOCAL_LENGTH_f = 100e-3 # 100 mm (para L1 y L2)
     
-    return output_field_obj
+    
+    # --- 1. Definir el Objeto de Entrada (S) ---
+    print("Creando objeto de entrada...")
+    campo_S = OpticalField(GRID_SIZE, PIXEL_PITCH, WAVELENGTH)
+
+    try:
+        # Usa una imagen de prueba clásica (Cameraman) o una foto tuya.
+        # Es mejor si es en blanco y negro y cuadrada.
+        ruta_imagen = '/home/mateusi/Desktop/Transm_E01.png' # O 'ruta/a/mi/foto.png'
+        
+        # 'target_width' es el tamaño físico real de la imagen en el plano S.
+        # (ej. 2 mm de ancho)
+        campo_S.add_image(ruta_imagen, target_width=2e-3)
+        
+    except FileNotFoundError:
+        print("ADVERTENCIA: No se encontró la imagen de prueba. Usando un círculo simple.")
+        campo_S.add_aperture('circ', size=1e-3) # Plan B
+        
+    campo_S.plot_intensity(title="Objeto de Entrada (S)")
+
+
+    
+    # === PROGRAMA 1: Simulación Rama Superior (S -> O) ===
+    def run_simulation_branch_2(input_field,):
+        print("\n--- Ejecutando Rama inferior")
+        
+        # 1. Viaje S -> M1 (Plano Fourier)
+        print("Calculando S -> U")
+        campo_M1 = propagate_FT(input_field)
+        # log_scale=True es ESENCIAL para ver el espectro de una imagen real
+        campo_M1.plot_intensity(title="Imagen final en Cam2(U)", log_scale=True)
+  
+    # Ejecutar la simulación de la Rama 1
+    run_simulation_branch_2(campo_S)
+
+    
+
