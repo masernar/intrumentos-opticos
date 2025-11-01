@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
         plt.imshow(data_to_plot, cmap='gray', extent=plot_extent)
         
-        plt.title("Imagen final en Cam2 (U) - Escala Física Correcta")
+        plt.title("Imagen final en Cam2 (U)")
         plt.xlabel("Posición X en el plano de Fourier (m)")
         plt.ylabel("Posición Y en el plano de Fourier (m)")
         plt.colorbar(label=label)
