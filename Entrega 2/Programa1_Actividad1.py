@@ -144,10 +144,10 @@ class OpticalField:
         if log_scale:
             # Añadimos un pequeño epsilon para evitar log(0)
             data_to_plot = np.log10(intensity + 1e-10)
-            label = "Log(Intensidad)"
+            label = "Log(Intensidad) (unidades arbitrarias)"
         else:
             data_to_plot = intensity
-            label = "Intensidad"
+            label = "Intensidad (unidades arbitrarias)"
 
         plt.imshow(data_to_plot, cmap='gray',
                    extent=[self.x_coords.min(), self.x_coords.max(),
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     PIXEL_PITCH = 5e-6    # 5 µm
     GRID_SIZE = 1024      # 1024x1024 píxeles
     FOCAL_LENGTH_f = 100e-3 # 100 mm (para L1 y L2)
-    
+    N_pix = GRID_SIZE * GRID_SIZE
     
     # --- 1. Definir el Objeto de Entrada (S) ---
     print("Creando objeto de entrada...")
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         
         print("Calculando M1 -> O (FFT 2)...")
         campo_O = propagate_FT(campo_M1_filtrado)
-        
+        campo_O.field = campo_O.field/ N_pix
         campo_O.plot_intensity(title=f"Imagen Final en Cam1 (O) - {filter_name}")
 
     # Ejecutar la simulación de la Rama 1

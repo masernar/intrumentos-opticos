@@ -144,10 +144,10 @@ class OpticalField:
         if log_scale:
             # Añadimos un pequeño epsilon para evitar log(0)
             data_to_plot = np.log10(intensity + 1e-10)
-            label = "Log(Intensidad)"
+            label = "Log(Intensidad) (unidades arbitrarias)"
         else:
             data_to_plot = intensity
-            label = "Intensidad"
+            label = "Intensidad (unidades arbitrarias)"
 
         plt.imshow(data_to_plot, cmap='gray',
                    extent=[self.x_coords.min(), self.x_coords.max(),
@@ -222,6 +222,7 @@ if __name__ == "__main__":
         # 1. Viaje S -> M1 (Plano Fourier)
         print("Calculando S -> U")
         campo_M1 = propagate_FT(input_field)
+        
         # log_scale=True es ESENCIAL para ver el espectro de una imagen real
         campo_M1.plot_intensity(title="Imagen final en Cam2(U)", log_scale=True)
   
