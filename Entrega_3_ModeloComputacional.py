@@ -95,6 +95,14 @@ R = np.sqrt(X**2 + Y**2)
 P_pupila = np.zeros((N, N), dtype=dtype_complejo)
 P_pupila[R <= R_PUPILA] = 1.0 + 0.0j
 
+R_STOP_PORCENTAJE = 0.2
+R_STOP = R_STOP_PORCENTAJE * R_PUPILA
+
+P_stop = np.zeros((N, N), dtype=dtype_complejo)
+P_stop[R <= R_STOP] = 1.0 + 0.0j
+
+P_pupila = P_pupila - P_stop
+    
 # --- 5. Simulación 4f (La Doble Transformada) ---
 print("Ejecutando modelo 4f: FFT(P * FFT(S))...")
 
