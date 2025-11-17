@@ -158,7 +158,7 @@ P_claro = np.zeros((N, N), dtype=dtype_complejo)
 P_claro[R <= R_PUPILA] = 1.0 + 0.0j
 
 # 4.2. Pupila de Campo Oscuro (Dark Field - DF)
-R_STOP_PORCENTAJE = 0.2
+R_STOP_PORCENTAJE = 0.001
 R_STOP = R_STOP_PORCENTAJE * R_PUPILA
 print(f"Radio del Stop (DF y Fase): {R_STOP:.2f} mm")
 
@@ -170,7 +170,7 @@ P_stop[R <= R_STOP] = 1.0 + 0.0j
 P_oscuro = P_claro - P_stop
 
 # 4.3. Pupila de Contraste de Fase (Zernike)
-AMPLITUD_PLATO = 0.3 # 30% de amplitud
+AMPLITUD_PLATO = 0.8 # 30% de amplitud
 FASE_PLATO = 1j      # Desfase de pi/2 (90 grados)
 
 P_fase = P_claro.copy()
@@ -275,7 +275,7 @@ plt.figure(figsize=(8, 7))
 im5 = plt.imshow(I_imagen_simulada, cmap='gray',
            extent=[eje_u_micras.min(), eje_u_micras.max(), eje_u_micras.min(), eje_u_micras.max()],
            vmin=0, vmax=1.0)
-plt.title(f'Imagen Simulada |U_img|² - Modo: {titulo_modo}')
+plt.title(f'Imagen de la muestra Simulada - Modo: {titulo_modo}')
 plt.xlabel(f'u (µm) [Ancho total: {L_IMAGEN_MICRAS:.0f} µm]')
 plt.ylabel('v (µm)')
 plt.colorbar(im5, label='Intensidad Normalizada')
@@ -299,6 +299,13 @@ else:
     plt.xlabel('u (µm)')
     plt.ylabel('Intensidad Normalizada')
     plt.grid(True)
-
+    
+plt.figure(figsize=(8, 5))
+plt.hist(S_fase.flatten(), bins=100, range=(-0.1, 1.0)) # Rango (0, 1)
+plt.title('Histograma de Valores de Fase de la Muestra')
+plt.xlabel('Corrimiento de Fase (Radianes)')
+plt.ylabel('Conteo de Píxeles')
+plt.grid(True)
+plt.show()
 # --- Mostrar todos los gráficos ---
 plt.show()
