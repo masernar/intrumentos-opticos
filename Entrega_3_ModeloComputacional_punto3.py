@@ -275,8 +275,8 @@ plt.figure(figsize=(8, 7))
 im5 = plt.imshow(I_imagen_simulada, cmap='gray',
            extent=[eje_u_micras.min(), eje_u_micras.max(), eje_u_micras.min(), eje_u_micras.max()],
            vmin=0, vmax=1.0)
-plt.title(f'Imagen de la muestra Simulada - Modo: {titulo_modo}')
-plt.xlabel(f'u (µm) [Ancho total: {L_IMAGEN_MICRAS:.0f} µm]')
+plt.title(f'Imagen de la muestra Simulada - {titulo_modo}')
+plt.xlabel(f'u (µm)')
 plt.ylabel('v (µm)')
 plt.colorbar(im5, label='Intensidad Normalizada')
 
@@ -295,7 +295,7 @@ else:
     # Si cargamos una muestra, un corte de la imagen es más útil
     perfil_imagen = I_imagen_simulada[N//2, :]
     plt.plot(eje_u_micras, perfil_imagen)
-    plt.title(f'Imagen (Corte transversal central) - Modo: {titulo_modo}')
+    plt.title(f'Imagen (Corte transversal central) - {titulo_modo}')
     plt.xlabel('u (µm)')
     plt.ylabel('Intensidad Normalizada')
     plt.grid(True)
